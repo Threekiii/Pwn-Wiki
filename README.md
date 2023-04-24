@@ -815,10 +815,237 @@ HexRays 经常会出现各种失败情况，尤其是对于没有符号、优化
 
 ### 3.1 OllyDBG 和 x64DBG 调试
 
-OllyDBG 和 x64DBG 都是调试 Windows 平台可执行文件的调试器。
+OllyDBG 和 x64DBG 都是调试 Windows 平台可执行文件的调试器。x64DBG 支持 32 位 和 64 位程序的调试，并且在不断开发、添加新的功能。OllyDBG 仅支持 32 位的程序，且已经停止更新。
+
+#### 3.1.1 打开文件
+
+![image-20230423100849877](images/image-20230423100849877.png)
+
+打开文件后，各窗口中会有内容出现。x64DBG 与 OD 的布局相同，左上区域为反汇编结果的显示区域，左下区域为浏览程序内存数据的区域，右下区域为栈数据的显示区域，右上区域为寄存器的显示区域。
+
+#### 3.1.2 控制程序运行
+
+按 Ctrl+G 组合键，可以跳转到目标地址；在反汇编窗口中，按 F2 键为切换当前地址的断点状态，按 F8 键为单步步过，按 F7 键为单步步入，按 F4 键为运行到光标处位置，按 F9 键为运行。
+
+常见的断点位置包括程序内的某个地址、程序调用的某个 API。此外，可以让程序在操作（读取/写入/执行）特定的某一小段内存时终端，其原理为使用 CPU 内建的硬件断点机制或使用 Windows 提供的异常处理机制的内存断点。
+
+x64DBG 在内存窗口/栈窗口中选定目标地址，单击右键，选择 “断点 -> 硬件断点” 或 “读取/写入 -> 选择长度”，可以设置硬件读取和硬件写入断点；在反汇编窗口中，右击目标地址，选择 “断点 -> 设置硬件断点（执行）”，设置硬件执行断点。
+
+#### 3.1.3 动态脱壳
+
+“壳” 是一种特殊的程序，对另一个程序进行变换后，利用变换的结果重新生成可执行文件。在运行时，它全部或部分还原存储在可执行文件中的变换结果，然后恢复原程序的执行。
+
+压缩壳是为了减小程序体积，加密壳是为了加大破解者的逆向难度。通常，加密壳需要配合压缩壳，加密壳会导致程序体积变大。
+
+按照变换操作的不同，可以进行如下分类：
+
+- 注重代码压缩：生成更小的可执行文件，如 UPX、ASPack 等。
+- 注重代码保护：阻碍逆向者进行分析，如 VMP、ASProtect 等。
+
+“脱壳” 即将 “壳” 去除，还原最初程序。加密壳在 CTF 中较少。
+
+UPX 壳使用最广泛，脱壳 UPX 的两种方法如下：
+
+- 静态方法：UPX 本身即提供脱壳器，使用命令行参数 -d 即可，但是有时会失败，需要切换使用正确的 UPX 版本。Windows 下内置多个 UPX 版本的第三方图形化界面 UPXShell 工具，可以方便地切换版本。
+- 动态方法：虽然 UPX 本身可以脱壳，但是 UPX 是基于加壳后可执行文件内存储的标识来查找并操作的，由于 UPX 是开源的，软件保护者可以任意修改这些标识，从而导致官方标准版本的 UPX 脱壳失败。这时通常采用动态脱壳。
+
+#### 3.1.4 查壳/脱壳工具
+
+查壳工具：
+
+- ExeinfoPE：https://github.com/ExeinfoASL/ASL/raw/master/exeinfope.zip
+- PEiD：https://www.aldeid.com/wiki/PEiD
+
+脱壳工具：
+
+- UPX：https://github.com/upx/upx
 
 ### 3.2 GDB 调试
 
+#### 3.2.1 GDB 环境配置
+
+Linux 系统中通常使用 GDB 进行调试。GDB 插件有：Gef、peda、Pwndbg 等。
+
+#### 3.2.2 Pwndbg安装
+
+CTF 中不同的题目有不同的环境要求，可能涉及 Ubuntu 16、Ubuntu 18、Ubuntu20。
+
+原版的 Ubuntu 16 默认安装的是 gdb7、python3.5，这两个环境在目前的 Pwndbg 中均不适用（2023.04，“Pwndbg is supported on Ubuntu 18.04, 20.04, and 22.04 with GDB 8.1 and later”）。解决方案：
+
+- 重新编译 Python，此处 Python 为 Python 版本为 3.8.15。
+- 使用 Python 3.8.15 编译 GDB，此处 GDB 版本为 11.2。
+- 下载 Pwndbg，不需要运行 setup.sh，直接安装依赖即可。
+
+下载链接：
+
+- Python：https://mirrors.cloud.tencent.com/macports/distfiles/python38/Python-3.8.15.tar.xz
+- GDB：https://mirrors.aliyun.com/gnu/gdb/gdb-11.2.tar.xz
+
+- Pwndbg：https://github.com/pwndbg/pwndbg 
+
+相关安装命令：
+
+```
+# 解压压缩包
+apt-get update
+apt-get install build-essential	 texinfo git vim
+xz -dk gdb-11.2.tar.xz
+xz -dk Python-3.8.15.tar.xz
+tar -xvf Python-3.8.15.tar
+tar -xvf gdb-11.2.tar.xz
+
+# 升级 Python
+sudo apt install -y wget build-essential libreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev
+cd Python-3.8.15
+./configure --prefix=/usr/local/python3
+make & make install
+rm /usr/bin/python3
+rm /usr/bin/python
+rm /usr/bin/pip3
+rm /usr/bin/pip
+ln -s /usr/local/python3/bin/python3.8 /usr/bin/python3
+ln -s /usr/local/python3/bin/python3.8 /usr/bin/python 
+ln -s /usr/local/python3/bin/pip3.8 /usr/bin/pip3   
+ln -s /usr/local/python3/bin/pip3.8 /usr/bin/pip 
+
+# 编译 GDB
+apt-get install libgmp-dev libncurses5-dev
+cd gdb-11.2
+mkdir build
+cd build
+../configure --with-python=/usr/bin/python3 
+make && make install
+
+# 安装 Pwndbg
+git clone https://github.com/pwndbg/pwndbg.git
+pip install -r requirements.txt
+echo "source /<your-path>/pwndbg/gdbinit.py" > ~/.gdbinit
+
+# 编码问题解决方法
+vim  /etc/profile
+	export LANG=C.UTF-8 
+source /etc/profile
+```
+
+#### 3.2.3 打开文件
+
+GDB 打开文件的方式与图形化工具不同，完全由命令控制，而不是快捷键。
+
+方式 1：在 GDB 的命令行后直接接可执行文件，例如 “gdb ./crackme”（适用于不需参数的程序）。
+
+方式 2：使用 GDB 的 --args 参数执行，例如 “gdb --args ./ping -c 10 127.0.0.1”。
+
+方式 3：打开 GDB，使用file命令指定可执行文件。
+
+#### 3.2.4 调试程序
+
+GDB 的调试方式和图形化工具不同，完全由命令控制，而不是快捷键。
+
+控制程序执行：
+
+- r（run）：启动程序。
+- c（continue）：让暂停的程序继续执行。
+- si（step instruction）：汇编指令层面上的单步步入。
+- ni（next instruction）：汇编层面上的单步步过。
+- finish：执行到当前函数返回。
+
+查看内存、表达式等：
+
+- x/dddFFF：ddd 代表长度， FFF 代表格式，例如 `x/10gx`，具体格式列表见 https://visualgdb.com/gdbreference/commands/x
+- p（print）：输出一个表达式的值，例如 `p 1+1`，p 命令也可以添加指定格式，例如 `p/x 1112222`。
+
+断点相关：
+
+- b（break）：b *location，location 可以为十六进制数、名称等，例如 `b *0x8005a0`、`b *main`。其中，`*` 是指中断在指定的地址，而不是对应的源代码行。
+- info b 或 info bl：列出所有断点，每个断点会有自己的序号。
+- del（delete）：删除指定序号的断点，例如 `del 1`。
+- clear：删除指定位置的断点，如 `clear *main`。
+
+修改数据：
+
+- 修改寄存器：`set $rax = 0x100000`。
+- 修改内存：set {要赋值的类型}地址 = 值，例如 `set {int}0x405000 = 0x12345`。
+
+GDB 不会在入口点处暂停程序，所以需要在程序执行前设置好断点。GDB 不会自动保存断点数据，需要用户每次重新设置断点。
+
+在 GDB 的命令行中，五输入直接回车代表重复上一条命令。
+
+#### 3.2.5 IDA 整合
+
+Pwndbg 提供了 IDA 的整合脚本，只需要在 IDA 中运行 Pwndbg 目录的 ida_script.py，然后 IDA 会监听 http://127.0.0.1:31337，本机 Pwndbg 链接到 IDA 上，并使用 IDA 的各种功能。
+
+可以修改脚本中的 127.0.0.1 为 0.0.0.0 来允许虚拟机连接。在 GDB 中执行 `config ida-rpc-host 主机 IP`，重启 GDB 即可生效。
+
 ### 3.3 IDA 调试器
+
+#### 3.3.1 选择 IDA 调试后端
+
+![image-20230423171021970](images/image-20230423171021970.png)
+
+Windows 版本 IDA 可以直接调试 Windows 下 32 bit 和 64 bit 的程序。Linux 版本则需要远程调试器。
+
+#### 3.3.2 本地调试启动方法
+
+载入 IDA ，本地调试启动方法：
+
+- 选择后端。选择调试器后端为 Local Windows debugger，即可使用 IDA 内置的调试器。
+- 开始调试。按 F9 快捷键启动程序，确认对话框中点击 Yes，即可开始调试。
+- 被调试文件默认的路径为输入文件的路径，若目标文件不存在，或因其他原因加载失败，IDA 均会弹出警告对话框，确认后进入 Debug application setup 设置的对话框。如有需要，也可以通过 Debugger -> Process options 菜单进入。
+
+IDA 不会在入口点处设置断点，需要提前设置好。
+
+#### 3.3.3 断点设置
+
+IDA 的断点可以通过快捷键 F2 设置，也可以在图形化界面中单击左侧小蓝点进行设置。在切换为断点后，对应行的底色将会变成红色以突出显示。
+
+![image-20230423172050803](images/image-20230423172050803.png)
+
+#### 3.3.4 查看变量
+
+在中断后，选择 Debugger -> Debugger windows -> Locals 菜单命令，打开查看局部变量窗口。
+
+设置断点，单步执行，Locals 窗口中红色的部分代表这些变量的值被修改过。
+
+![image-20230424090456793](images/image-20230424090456793.png)
+
+以上程序中，v5 是一个字符串，存放着正确输入。那么，如何获取 v5 的内容，找到内存中的 flag 呢？
+
+方式 1：
+
+- 在 Locals 窗口的 Location 栏中可以看到 v5 的位置为 RDI。
+
+![image-20230424090655539](images/image-20230424090655539.png)
+
+- 在寄存器窗口可以看到 RDI 的值，单击其值右侧的按钮，即可在反汇编窗口中跳转到对应的位置。
+
+![image-20230424091014448](images/image-20230424091014448.png)
+
+- 按 a 键将其转为字符串显示。
+
+方式 2：
+
+- 在伪代码窗口中按 Y 键，修改 v5 的类型，从 `_BYTE*` 修改为 `char *`，此时 HexRays 会认为 v5 是一个字符串，从而将其在 Locals 中显示出来。在 Locals 窗口中右键单击 Refresh 刷新。
+
+![image-20230424091327151](images/image-20230424091327151.png)
+
+#### 3.3.5 远程调试配置方法
+
+远程调试与本地调试相似，只不过要调试的可执行文件运行在远程计算机上，需要在远程计算机上运行 IDA 的远程调试服务器。IDA 的远程调试服务器位于 IDA 安装目录的 dbgsrv 目录下。
+
+![image-20230424092336909](images/image-20230424092336909.png)
+
+IDA 提供了从主流桌面系统 Windows、Linux、Mac 到移动端 Android 系统的调试服务器，用户根据系统和可执行文件架构选择对应的服务器。
+
+以 linux_server64 为例，在 Linux 虚拟机中运行调试服务器，不带参数运行时，调试服务器将自动监听 0.0.0.0:23946。
+
+在 IDA 中选择调试后端为 Remote Linux debugger，然后设置 Process options。所有路径必须是远程主机上的路径，此处将被调试的可执行文件放在 /tmp 目录下。设置好参数，单击 OK 按钮保存。
+
+![image-20230424094317361](images/image-20230424094317361.png)
+
+IDA 设置断点进行调试。注意，通过远程调试运行的程序与服务器程序共用一个控制台，直接在服务器端输入即可与被调试程序交互。
+
+![image-20230424094443150](images/image-20230424094443150.png)
+
+
 
 ## 第 4 章 常见算法识别
