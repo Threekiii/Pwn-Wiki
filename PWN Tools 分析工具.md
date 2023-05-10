@@ -154,5 +154,519 @@ $ gdbserver --multi 0.0.0.0:6666 --attach 3757		# 指定目标程序 PID
 
 ## 第 2 章  GDB
 
-## 第 3 章 其他常用工具
+GDB 是 GNU 项目的调试器，是一个终端调试器，一般用于在 Linux 系统中动态调试程序。
+
+### 2.1 组成架构
+
+GDB 的组成架构如图硕士，主要通过 ptrace 系统调用实现，使用 cli 接口或者 mi 接口的图形化界面，可以对程序进行调试。
+
+调试本地目标程序时直接使用本地 gdb，调试远程目标程序则需要使用 gdbserver。
+
+注意，为了避免非预期错误，需要保持 gdbserver 和 gdb 版本一致，必要时手动编译一份。如果需要调试非 x86/x64 架构的程序（例如 arm），则需要安装 gdb-multiarch，并在启动后通过命令 `set architecture arm` 设置目标架构。
+
+![gdb](images/gdb.png)
+
+### 2.2 工作原理
+
+GDB 通过 ptrace 系统调用来接管一个程序的执行。ptrace 系统调用提供了一种方法使得父进程可以观察和控制其他进程的执行，检查和改变其核心映像以及寄存器，主要用来实现断点调试和系统调用跟踪。
+
+ptrace 系统调用同样被封装到 libc 中，使用时需要引入 ptrace.h 文件，通过传入一个请求参数和一个进程 ID 来调用。
+
+#### 2.2.1 GDB 调试方式
+
+GDB 三种调试方式如下。
+
+方式一，运行并调试一个**新进程**：
+
+- 运行GDB，通过命令行或 `file` 命令指定目标程序；
+- 输入 `run` 命令，GDB 将执行以下操作：
+  - 通过 `fork()` 系统调用创建一个新进程；
+  - 在新创建的子进程中执行操作：`ptrace(PTRACE_TRACEME,0,0,0)`；
+  - 在子进程中通过 `execv()` 系统调用加载用户指定的可执行文件。
+
+方式二，attach 并调试一个**已经运行的进程**：
+
+- 用户确定需要进行调试的进程 PID；
+- 运行 GDB，输入 `attach <pid>`，对该进程执行操作：`ptrace(PTRACE_ATTACH,pid,0,0)`；
+
+方式三，**远程调试**目标机上新创建的进程：
+
+- gdb 运行在调试机上，gdbserver 运行在目标机上，两者之间的通信数据格式由 GDB 远程串行协议（Remote Serial Protocol）定义；
+- RSP 协议数据的基本格式为：`$.........#xx`；
+- gdbserver 的启动方式相当于运行并调试一个新创建的进程。
+
+在将 GDB attach 到一个进程时，可能会出现 `Operation not permitted` 的问题，这是因为设置了内核参数 `ptrace_scope=1`（表示 True），此时普通用户进程是不能对其他进程进行 attach 操作的，可以用 root 权限启动 GDB，也可以修改参数：
+
+```
+$ cat /proc/sys/kernel/yama/ptrace_scope 
+1
+
+# echo 0 > /proc/sys/kernel/yama/ptrace_scope	# 临时修改
+
+# cat /etc/sysctl.d/10-ptrace.conf 	# 永久修改
+kernel.yama.ptrace_scope = 0
+```
+
+ptrace 不仅可以用于调试，也可以用于反调试。一种常见的方法是使用 ptrace 的 PTRACE_TRACEME 请求参数，让程序对自身进程进行追踪，由于同一进程同一时间只能被一个 tracer 追踪，所以当调试器试图将 ptrace 附加到该进程上时，就会报错 `Operation not permitted`。绕过方式：设置 LD_PRELOAD 环境变量，使程序加载一个假的 ptrace 命令。
+
+#### 2.2.2 断点实现
+
+硬件断点是通过硬件实现的，软件断点是通过内核信号实现的。
+
+### 2.3 增强插件
+
+GDB 启动时，会在当前用户的主目录中寻找一个名为 .gdbinit 的文件。
+
+可选的 GDB 增强工具有 PEDA、gef 和 pwndbg 等。pwndbg 不可以和其他插件一起使用。
+
+pwndbg 的安装：
+
+```
+git clone https://github.com/pwndbg/pwndbg
+cd pwndbg
+./setup.sh
+```
+
+### 2.4 基本指令（GDB）
+
+#### break / b
+
+```
+break	#不带参数时，在所选栈帧中执行的下一条指令处下断点
+break <function>	#在函数体入口处下断点
+break <line>	#在当前源码文件指定行的开始处下断点
+break -N break +N	#在当前源码行前面或后面的 N 行开始处下断点，N为正整数
+break <file:line>	#在源码文件 file 的 line 行处下断点
+break <file:function>	#在源码文件 file 的 function 函数入口处下断点
+break <address>	#在程序指令地址处下断点
+break ... if <cond>	#设置条件断点，...代表上述参数之一（或无参数），cond 为条件表达式，仅在 cond 值非零时断下程序
+```
+
+```
+b *(0x123456)	#在程序指令地址 0x123456 处下断点
+break fun if $rdi==5 #条件断点，rdi值为5的时候才断下程序
+```
+
+#### info / i
+
+```
+info breakpoints [list...] #查看断点，观察点和捕获点的列表
+info break [list...]	# list...用来指定若干个断点的编号（可省略），可以是2、1-4、3 5等
+info display	#打印自动显示的表达式列表，每个表达式都带有项目编号
+info reg	#查看当前寄存器的信息
+info threads	#打印所有线程的信息，包含 Thread ID、Target ID 和 Frame
+info frame	#打印指定栈帧的详细信息
+info proc	#查看 proc 里的进程信息
+```
+
+```
+i b	#同 info breakpoints
+i r #同 info reg
+```
+
+#### disable / dis
+
+```
+disable [breakpoints] [list...]	#禁用断点，不带参数时禁用所有断点；breakpoints 是 disable 的子命令（可省略）
+```
+
+#### enable 
+
+```
+enable [breakpoints] [list...]	#启用指定的断点（或所有定义的断点）
+enable [breakpoints] once list...	#临时启用断点，这些断点在停止程序后会被禁用
+enable [breakpoints] delete list...	#指定的断点启用一次，然后删除，一旦程序停止，GDB 就会删除这些断点，等效于用 tbreak 命令设置的临时断点
+```
+
+#### clear
+
+```
+clear	#清除指定行或函数处的断点。参数可以是行号、函数名称或 *address。不带参数时，清除所选栈帧在源码中的所有断点
+clear <function>	#清除 file 的 function 入口处设置的任何断点
+clear <file:function>	#清除 file 的 function 入口处设置的任何断点
+clear <line>	#清除 file 的 line 代码中设置的任何断点
+clear <file:line>	#清除 file 的 line 代码中设置的任何断点
+clear <address>	#清除程序指令地址处的断点
+```
+
+#### delete / d
+
+```
+delete [breakpoints] [list...]	#删除断点，不带参数时删除所有断点
+```
+
+#### watch
+
+```
+watch [-l|-location] <expr>	#对 expr 设置观察点，每当表达式的值改变时，程序就会停止；此外，rwatch 命令用于在访问时停止，awatch 命令用于在访问和改变时都停止
+```
+
+#### step / s / si
+
+```
+step [N]	#单步步进，参数 N 表示执行 N 次（或直到程序停止）；此外，reverse-step [N] 用于反向步进
+```
+
+```
+s	#源码层面
+si	#汇编层面
+```
+
+#### next / n / ni
+
+```
+next [N]	#单步步过，与 step 不同，当调用子程序时，此命令不会进入子程序，而是将其视为单个源代码执行；everse-next [N] 用于反向步过
+```
+
+```
+n	#源码层面
+ni	#汇编层面
+```
+
+#### return
+
+```
+return <expr>	#取消函数调用的执行，将 expr 作为函数返回值并使函数直接返回
+```
+
+#### finish / fin
+
+```
+finish	#执行程序直到指定的栈帧返回
+```
+
+#### until / u
+
+```
+until <location>	#执行程序直到大于当前栈帧或当前栈帧中的指定位置的源码行。此命令常用于快速通过一个循环，以避免单步执行
+```
+
+#### continue / c
+
+```
+continue [N]	#在信号或断点之后，继续运行被调试程序。如果从断点开始，可以使用数字 N 作为参数，这意味着将该断点的忽略计数设置为 N-1（以便断点在第 N 次到达之前不会中断）
+```
+
+#### print / p
+
+```
+print <function>	#打印 function 的地址
+print [expr]	#求表达式 expr 的值并打印。可访问的变量是所选栈帧，以及范围为全局或整个文件的所有变量
+print /f [expr]	#通过指定 /f 来选择不同的打印格式，其中 f 是一个指定格式的字母
+```
+
+```
+p &a #查看变量 a 的地址
+p *(0x123456) #查看 0x123456 地址的值
+p $rdi #显示 rdi 寄存器的值
+p *($rdi) #显示rdi指向的值
+```
+
+#### x
+
+```
+x/nfu <addr>	#查看内存，n、f、u 都是可选参数，用于指定要查看的内存以及如何格式化，addr 是起始地址的表达式
+```
+
+```
+# n、f、u 参数含义
+n：重复次数（默认值为 1），指定要查看多少个单位（由 u 指定）的内存值；
+f：显示格式（初始默认值是 x），显示格式是 print('x','d','u','o','t','a','c','f','s')使用的格式之一，再加 i（机器指令）；
+u：单位大小，b 表示单字节，h 表示双字节，w 表示四字节，g 表示八字节。
+```
+
+```
+x /10gx 0x123456 #从 0x123456 开始每个单元八个字节，十六进制显示 10 个单元的数据
+x /10xd $rdi #从 rdi 指向的地址向后打印 10 个单元，每个单元 4 字节的十进制数
+x /10i 0x123456 #从 0x123456 处向后显示 10 条汇编指令
+```
+
+#### disassemble / disas
+
+```
+disas <func>	#反汇编指定函数
+disas /r <addr>	#反汇编某地址所在函数，/r 显示机器码
+disas <begin_addr> <end_addr>	#反汇编从开始地址到结束地址的部分
+```
+
+#### display
+
+```
+display/fmt <expr> | <addr>	#每次程序停止时打印表达式 expr 或者内存地址 addr 的值。fmt 用于指定显示格式；此外，undisplay 用于取消打印。
+```
+
+#### help / h
+
+```
+help <class>	#获取该类中某个命令的列表
+help <command>	#获取某命令的帮助信息
+```
+
+#### attach
+
+```
+attach <pid>	#attach 到 GDB 以外的进程或文件。将进程 ID 或设备文件作为参数
+```
+
+#### run / r
+
+```
+run	#启动被调试程序。可以直接指定参数，也可以用 set args 设置（启动所需的）参数。还可以使用 > < >> 进行输入输出的重定向
+```
+
+#### backtrace / bt
+
+```
+bt	#打印整个栈的回溯，每个栈帧一行
+bt N	#只打印最内层的 N 个栈帧
+bt -N	#只打印最外层的 N 个栈帧
+bt full N	类似于 bt N，增加打印局部变量的值
+```
+
+#### thread apply all bt
+
+打印出所有线程的堆栈信息。
+
+#### generate-core-file
+
+将调试中的进程生成内核转储文件。
+
+#### directory / dir
+
+设置查找源文件的路径，或者使用 GDB 的 -d 选项，例如：
+
+```
+gdb a.out -d /search/code/
+```
+
+### 2.5 常用指令（GDB+pwndbg）
+
+指令详细介绍查看 **2.4 基本指令（GDB）**。
+
+#### 2.5.1 基本指令
+
+```
+help	#帮助
+pwndbg -all #查看 pwndbg 所有命令
+pwndbg heap	#查看 heap 相关所有命令
+```
+
+```
+q	#quit，退出
+```
+
+```
+i b	#info break，查看所有断点信息
+i r #info reg，查看寄存器当前值
+i f	#info function，查看所有函数名，需保留符号
+```
+
+```
+show	#查看调试器基本信息
+```
+
+```
+backtrace	#查看调用栈
+```
+
+#### 2.5.2 执行指令
+
+```
+s	#单步步入（源码层面）
+si	#单步步入（汇编层面）
+```
+
+```
+n	#单步步过（源码层面）
+ni	#单步步过（汇编层面）
+```
+
+```
+c	#continue，继续执行到断点
+```
+
+```
+r	#run，重新开始执行
+```
+
+#### 2.5.3 断点指令
+
+##### 设置断点
+
+```
+b *(0x123456) # 给 0x123456 地址处的指令下断点
+b *$ rebase(0x123456) #$rebase 在调试开 PIE 的程序的时候可以直接加上程序的随机地址
+b <function> #给函数 function 下断点，目标文件需保留符号
+b <file:function>
+b <file>:15 #给 file 的 15 行下断点，需源码
+b +0x10 #在程序当前停住的位置后 0x10 下断点，同样可以 -0x10 ，就是前 0x10
+break fun if $rdi==5 #条件断点，rdi 值为 5 的时候才断
+```
+
+##### 删除/禁用断点
+
+```
+i b	#info break，查看断点编号
+```
+
+```
+delete	#删除所有断点
+delete 5	#删除 5 号断点
+```
+
+```
+disable 5	#禁用 5 号断点
+enable 5	#启用 5 号断点
+```
+
+```
+clear	#清除所有断点
+```
+
+##### 内存断点 watch
+
+```
+watch 0x123456 #0x123456 地址的数据改变的时候中断
+watch a #变量 a 改变的时候中断
+info watchpoints #查看 watch 断点信息
+```
+
+##### 捕获断点 catch
+
+```
+catch syscall #syscall 系统调用的时候中断
+tcatch syscall #syscall 系统调用的时候中断，只断一次
+info break #catch 的断点可以通过 i b 查看
+```
+
+除了 syscall 之外，还可以使用：
+
+```
+throw: 抛出异常
+catch: 捕获异常
+exec: exec被调用
+fork: fork被调用
+vfork: vfork被调用
+load: 加载动态库
+load libname: 加载名为 libname 的动态库
+unload: 卸载动态库
+unload libname: 卸载名为 libname 的动态库
+syscall [args]: 调用系统调用，args 可以指定系统调用号，或者系统名称
+```
+
+#### 2.5.4 打印指令
+
+##### 查看内存 
+
+```
+x /10gx 0x123456 #从 0x123456 开始每个单元八个字节，十六进制显示 10 个单元的数据
+x /10xd $rdi #从 rdi 指向的地址向后打印 10 个单元，每个单元 4 字节的十进制数
+x /10i 0x123456 #从 0x123456 处向后显示 10 条汇编指令
+```
+
+参数如下：
+
+```
+x：按十六进制格式显示变量
+d：按十进制格式显示变量
+u：按十六进制格式显示无符号整型
+o：按八进制格式显示变量
+t：按二进制格式显示变量
+a：按十六进制格式显示变量
+c：按字符格式显示变量
+f：按浮点数格式显示变量
+s：按字符串显示
+b：按字符显示
+i：显示汇编指令
+```
+
+##### 打印指令
+
+```
+p <function> #打印 function 的地址，需要保留符号
+p 0x10-0x08 #计算 0x10-0x08 的结果
+p &a #查看变量 a 的地址
+p *(0x123456) #查看 0x123456 地址的值，注意和 x 指令的区别，x 指令查看地址的值不用星号
+p $rdi #显示 rdi 寄存器的值，而不是rdi指向的值
+p *($rdi) #显示 rdi 指向的值
+```
+
+##### 打印汇编指令
+
+```
+disass 0x123456 #显示 0x123456 前后的汇编指令
+```
+
+#### 2.5.5 修改和查找指令
+
+##### 修改数据
+
+```
+set $rdi=0x10 #把rdi寄存器的值变为 0x10
+set *(0x123456)=0x10 #0x123456 地址的值变为 0x10
+```
+
+##### 查找数据
+
+```
+search flag #从当前位置向后查包含 flag 字符的指令
+```
+
+```
+ropgadget #查找 ropgadget（pwndbg only）
+```
+
+#### 2.5.6 栈操作指令
+
+##### 查看栈信息
+
+```
+stack 20
+```
+
+#### 2.5.7 堆操作指令
+
+##### 查看堆信息
+
+```
+arena	#打印 arena 基本信息
+arenas #显示所有 arena 的列表
+```
+
+```
+bins	#查看所有种类的堆块的链表情况
+fastbins #单独查看fastbins的链表情况
+largebins #单独查看largebins的链表情况
+smallbins #单独查看smallbins的链表情况
+unsortedbin #单独查看unsortedbin链表情况
+tcachebins #同上，单独查看tcachebins的链表情况
+tcache #查看tcache详细信息
+```
+
+```
+heap #显示所有堆块
+```
+
+#### 2.5.7 pwndbg独有指令
+
+##### 查看溢出大小
+
+```
+cyclic 200	#生成200个字符
+cyclic -l 0x12345678	#根据 Invalid address 错误地址，查看溢出大小
+```
+
+##### 查看 plt/got 表
+
+```
+plt
+```
+
+```
+got
+```
+
+## 第 3 章 Pwntools
+
+
 
