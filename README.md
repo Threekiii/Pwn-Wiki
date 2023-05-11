@@ -7,11 +7,8 @@
 ## 0x01 建议学习路径
 
 1. Assembly-Language  汇编语言
-
 2. Reverse-Engineering  逆向工程
-
-3. PWN Tools 分析工具 
-
+3. PWN Tools 分析工具
 4. PWN  You-just-got-pwned!
 
 ## 0x02 声明

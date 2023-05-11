@@ -668,5 +668,424 @@ got
 
 ## 第 3 章 Pwntools
 
+Pwntools 是一个 CTF 框架和漏洞利用开发库，拥有本地执行、远程连接读写、shellcode 生成、ROP 链构建、ELF 解析、符号泄露等功能。
 
+Pwntools 作为一个 pip 包进行安装，分为两个模块，一个是 pwn，简单使用 `from pwn import *` 即可将所有子模块和一些常用的系统库导入当前命名空间中，是专门针对 CTF 比赛优化的；另一个模块是 pwnlib，更适合根据需要导入子模块，常用于基于 Pwntools 的二次开发。
+
+Pwntools 的一些常用子模块：
+
+- pwnlib.tubes：与 sockets、processes、ssh 等进行连接；
+- pwnlib.context：设置运行时变量；
+- pwnlib.elf：操作 ELF 可执行文件和共享库；
+- pwnlib.asm：汇编和反汇编，支持 i386/i686/amd64/thumb 等；
+- pwnlib.shellcraft：shellcode 生成器；
+- pwnlib.gdb：调试，与 GDB 配合使用；
+- pwnlib.dynelf：利用远程信息泄露远程解析函数；
+- pwnlib.fmtstr：格式化字符串利用工具；
+- pwnlib.rop：ROP 利用工具，包括 rop、srop 等；
+- pwnlib.util：一些使用小工具。
+
+### 3.1 pwnlib 模块
+
+- 所有示例基于 python3，ubuntu 16.04
+
+#### pwnlib.tubes
+
+pwnlib.tubes 模块用于与目标文件或者目标服务器进行交互。
+
+```
+# 进程
+p = process("/bin/sh")	
+```
+
+```
+# 套接字
+l = remote("127.0.0.1",1080)
+l = listen(1080)
+```
+
+```
+# SSH
+s = ssh(host="example.com",user="username",password="passwd")
+```
+
+常用函数如下：
+
+```
+interactive()	# 交互模式，能够同时读写管道，通常在获得 shell 之后调用
+```
+
+```
+recv(numb=1096,timeout=default)	# 接收最多 numb 字节的数据
+recv(numb,timeout=default)	# 接收 numb 字节的数据
+recvall()	# 接收数据直到 EOF
+recvline(keepends=True)	# 接收一行，可选择是否保留行尾的 \n
+recvrepeat(timeout=default)	# 接收数据直到 EOF 或 timeout
+recvuntil(delims,timeout=default)	# 接收数据直到 delims 出现
+```
+
+```
+send(data)	# 发送数据
+sendafter(delims,timeout=default)	# 相当于recvuntil(delims,timeout)和send(data)的组合
+sendline(data)	# 发送一行，默认在行尾加 \n
+sendlineafter(delims,data,timeout=default)	# 相当于recvuntil(delims,timeout)和sendline(data)的组合
+```
+
+```
+close()	#关闭管道
+```
+
+##### 示例：端口交互
+
+```python
+In [1]: from pwn import *
+
+In [2]: l = listen()
+[x] Trying to bind to :: on port 0
+[x] Trying to bind to :: on port 0: Trying ::
+[+] Trying to bind to :: on port 0: Done
+[x] Waiting for connections on :::46495
+
+In [4]: r = remote("localhost", l.lport)
+[x] Opening connection to localhost on port 46495
+[x] Opening connection to localhost on port 46495: Trying 127.0.0.1
+[+] Waiting for connections on :::46495: Got connection from ::ffff:127.0.0.1 on port 55728
+[+] Opening connection to localhost on port 46495: Done
+
+In [5]: c = l.wait_for_connection()
+
+In [6]: r.send("hello\n")
+  r.send("hello\n")
+
+In [7]: c.recv()
+Out[7]: b'hello\n'
+
+In [8]: r.sendline("hello")
+  r.sendline("hello")
+
+In [9]: c.recvline()
+Out[9]: b'hello\n'
+
+In [10]: r.send("hello world")
+  r.send("hello world")
+
+In [11]: c.recvuntil("hello")
+  c.recvuntil("hello")
+Out[11]: b'hello'
+
+In [12]: c.recv()
+Out[12]: b' world'
+```
+
+##### 示例：进程交互
+
+```python
+In [1]: from pwn import *
+
+In [2]: p = process("/bin/sh")
+[x] Starting local process '/bin/sh'
+[+] Starting local process '/bin/sh': pid 10040
+
+In [3]: p.sendline("sleep 3; echo hello world;")
+  p.sendline("sleep 3; echo hello world;")
+
+In [4]: p.recvline(timeout=5)
+Out[4]: b'hello world\n'
+
+In [6]: p.interactive()
+[*] Switching to interactive mode
+whoami
+ubuntu
+
+In [7]: p.close()
+```
+
+#### pwnlib.context
+
+pwnlib.context 模块用于设置运行时变量，例如目标系统、目标体系结构、端序、日志等。
+
+##### 示例：设置运行时变量
+
+```python
+In [1]: from pwn import *
+
+In [2]: context.clear()	# 恢复默认值
+
+In [3]: context.os = "linux"
+
+In [4]: context.arch = "arm"
+
+In [5]: context.bits = 32
+
+In [6]: context.endian = "little"
+
+In [7]: vars(context)
+Out[7]: 
+{'cache_dir': '/home/ubuntu/.cache/.pwntools-cache-3.8',
+ 'os': 'linux',
+ 'endian': 'little',
+ 'bits': 32,
+ 'arch': 'arm'}
+
+In [8]: context.update(os="linux", arch="amd64", bits=64)	# 更新
+
+In [9]: context.log_level = "debug"	# 日志等级
+
+In [10]: context.log_file = "/tmp/pwnlog.txt"	# 日志文件
+
+In [11]: vars(context)
+Out[11]: 
+{'cache_dir': '/home/ubuntu/.cache/.pwntools-cache-3.8',
+ 'os': 'linux',
+ 'endian': 'little',
+ 'bits': 64,
+ 'arch': 'amd64',
+ 'log_level': 10,
+ 'log_file': <_io.TextIOWrapper name='/tmp/pwnlog.txt' mode='a' encoding='UTF-8'>}
+```
+
+#### pwnlib.elf
+
+pwnlib.elf 模块用于操作 ELF 文件，包括符号查找、虚拟内存、文件偏移，以及修改和保存二进制文件等功能。
+
+常用函数如下：
+
+```
+asm(address, assembly)	# 汇编指令 assembly 并将其插入 ELF 的 address 地址处，需要使用 ELF.save() 函数来保存
+bss(offset)	# 返回 .bss 段加上 offset 后的地址
+checksec()	# 查看文件开启的安全保护
+disable_nx()	# 关闭 NX
+disasm(address, n_bytes)	# 返回对地址 address 反汇编 n 字节的字符串
+offset_to_vaddr(offset)	# 将偏移 offset 转换为虚拟地址
+vaddr_to_offset(address)	# 将虚拟地址 address 转换为文件偏移
+read(address, count)	# 从虚拟地址 address 读取 count 个字节的数据
+write(address, data)	# 在虚拟地址 address 写入 data
+section(name)	# 获取 name 段的数据
+debug()	# 使用gdb.debug() 进行调试
+```
+
+#### pwnlib.asm
+
+pwnlib.asm 模块用于汇编和反汇编代码，需要安装对应体系结构的 binutils。
+
+汇编模块 pwnlib.asm.asm 如下：
+
+```
+In [1]: from pwn import *
+
+In [2]: asm("nop")
+Out[2]: b'\x90'
+
+In [4]: asm(shellcraft.nop())
+Out[4]: b'\x90'
+
+In [6]: asm("mov eax,1")
+Out[6]: b'\xb8\x01\x00\x00\x00'
+```
+
+反汇编模块 pwnlib.asm.disasm 如下：
+
+```
+In [1]: from pwn import *
+
+In [2]: print(disasm(b"\xb8\x01\x00\x00\x00"))
+   0:   b8 01 00 00 00          mov    eax, 0x1
+```
+
+python3 中需要引入 codecs 模块：
+
+```
+In [5]: import codecs
+
+In [7]: print(disasm(codecs.decode('6a0258cd80ebf9', 'hex')))
+   0:   6a 02                   push   0x2
+   2:   58                      pop    eax
+   3:   cd 80                   int    0x80
+   5:   eb f9                   jmp    0x0
+```
+
+##### 示例：构建 ELF 文件
+
+构建具有二进制数据的 ELF 文件（pwnlib.asm.make_elf）：
+
+```
+In [8]: context.clear(arch="amd64")
+
+In [9]: bin_sh = asm(shellcraft.amd64.linux.sh())
+
+In [10]: filename = make_elf(bin_sh, extract=False)
+
+In [11]: p = process(filename)
+[x] Starting local process '/tmp/pwn-asm-iupzvp_a/step3-elf'
+[+] Starting local process '/tmp/pwn-asm-iupzvp_a/step3-elf': pid 11682
+
+In [12]: p.sendline("echo hello")
+  p.sendline("echo hello")
+
+In [13]: p.recv()
+Out[13]: b'hello\n'
+```
+
+另一个函数 `pwnlib.asm.make_elf_from_assembly()` 则允许构建具有指定汇编代码的 ELF 文件，与 `make_elf()`不同，`make_elf_from_assembly()`直接从汇编文件生成 ELF 文件，并保留所有符号，例如标签和局部变量等。
+
+```
+In [14]: asm_sh = shellcraft.amd64.linux.sh()
+
+In [15]: filename = make_elf_from_assembly(asm_sh)
+
+In [16]: p = process(filename)
+[x] Starting local process '/tmp/pwn-asm-ktudpgf3/step3'
+[+] Starting local process '/tmp/pwn-asm-ktudpgf3/step3': pid 11719
+
+In [17]: p.sendline("echo hello")
+  p.sendline("echo hello")
+
+In [18]: p.recv()
+Out[18]: b'hello\n'
+```
+
+#### pwnlib.shellcraft
+
+pwnlib.shellcraft 模块可以生成各种体系结构（aarch64、amd64、arm、i386、mips、thumb 等）的 shellcode 代码。
+
+```
+In [20]: print(shellcraft.amd64.linux.sh())
+    /* execve(path='/bin///sh', argv=['sh'], envp=0) */
+    /* push b'/bin///sh\x00' */
+    push 0x68
+    mov rax, 0x732f2f2f6e69622f
+    push rax
+    mov rdi, rsp
+    /* push argument array ['sh\x00'] */
+    /* push b'sh\x00' */
+    push 0x1010101 ^ 0x6873
+    xor dword ptr [rsp], 0x1010101
+    xor esi, esi /* 0 */
+    push rsi /* null terminate */
+    push 8
+    pop rsi
+    add rsi, rsp
+    push rsi /* 'sh\x00' */
+    mov rsi, rsp
+    xor edx, edx /* 0 */
+    /* call execve() */
+    push SYS_execve /* 0x3b */
+    pop rax
+    syscall
+```
+
+#### pwnlib.gdb
+
+pwnlib.gdb 模块提供 GDB 动态调试支持，两个常用函数：
+
+```
+gdb.attach(target, gdbscript=None)	# 在一个新终端打开 GDB 并 attach 到指定 PID 的进程，或者一个 pwnlib.tubes 对象，可以使用 ps -aux 查看进程 PID
+gdb.debug(args, gdbscript=None)	# 在新终端中使用 GDB 加载一个二进制文件
+```
+
+##### 示例：GDB 动态调试支持
+
+```
+In [21]: gdb.attach(11919)
+[*] running in new terminal: ['/usr/local/bin/gdb', '-q', '/home/ubuntu/Desktop/PWN/rop', '11919']
+[x] Waiting for debugger
+[+] Waiting for debugger: Done
+Out[21]: 11980
+```
+
+#### pwnlib.dynelf
+
+pwnlib.dynelf 模块用来应对无 libc 情况下的漏洞利用。它首先找到 libc 的基地址，然后使用符号表和字符串表对所有符号进行解析，直到找到我们需要的函数的符号。
+
+#### pwnlib.fmtstr
+
+pwnlib.fmtstr 模块用于格式化字符串漏洞的利用。
+
+#### pwnlib.rop
+
+pwnlib.rop 模块分为两个子模块：
+
+- pwnlib.rop.rop：普通 rop 模块，可以辅助构建 ROP 链。
+- pwnlib.rop.srop：提供了针对 SROP 的利用能力。
+
+> SROP 与 ROP 类似，通过一个简单的栈溢出，覆盖返回地址并执行 gadgets 控制执行流。不同的是，SROP 使用能够调用 sigreturn 的 gadget 覆盖返回地址，并将一个伪造的 sigcontext 结构体放到栈中。
+
+##### 示例：查看 ROP 栈
+
+```
+In [26]: context.clear(arch="amd64")
+
+In [28]: assembly = "pop rdx; pop rdi; pop rsi; add rsp,0x20; ret; target:ret"
+
+In [29]: binary = ELF.from_assembly(assembly)
+[*] '/tmp/pwn-asm-9d0rc3sm/step3'
+    Arch:     amd64-64-little
+    RELRO:    No RELRO
+    Stack:    No canary found
+    NX:       NX disabled
+    PIE:      No PIE (0x10000000)
+    RWX:      Has RWX segments
+
+In [30]: rop = ROP(binary)
+[*] Loading gadgets for '/tmp/pwn-asm-9d0rc3sm/step3'
+
+In [31]: rop.target(1,2,3)
+
+In [32]: print(rop.dump())
+0x0000:       0x10000000 pop rdx; pop rdi; pop rsi; add rsp, 0x20; ret
+0x0008:              0x3 [arg2] rdx = 3
+0x0010:              0x1 [arg0] rdi = 1
+0x0018:              0x2 [arg1] rsi = 2
+0x0020:      b'iaaajaaa' <pad 0x20>
+0x0028:      b'kaaalaaa' <pad 0x18>
+0x0030:      b'maaanaaa' <pad 0x10>
+0x0038:      b'oaaapaaa' <pad 0x8>
+0x0040:       0x10000008 target
+```
+
+#### pwnlib.util
+
+pwnlib.util 是模块的集合，包括了一些实用小工具，此处介绍两个，分别是 packing 和 cyclic。
+
+packing 模块用于将整数打包和解包。使用 p32()、p64()、u32() 和 u64() 函数可以分别对 32 位和 64 位整数打包和解包，也可以使用 pack() 函数自己定义长度，添加参数 endian 和 signed 设置端序以及是否带符号。
+
+-  p32()、p64()：将数字转换为字符。
+-  u32()、u64()：将字符转换为数字。
+
+```
+# python2
+
+In [1]: from pwn import *
+
+In [2]: p32(0xdeadbeef)
+Out[2]: '\xef\xbe\xad\xde'
+
+In [3]: p32(0xdeadbeef).encode("hex")
+Out[3]: 'efbeadde'
+
+In [4]: p64(0xdeadbeef).encode("hex")
+Out[4]: 'efbeadde00000000'
+
+In [5]: p32(0xdeadbeef, endian="big", sign="unsigned")
+Out[5]: '\xde\xad\xbe\xef'
+
+In [6]: u32("1234")
+Out[6]: 875770417
+
+In [7]: u32("1234", endian="big", sign="signed")
+Out[7]: 825373492
+
+In [8]: u32("\xef\xbe\xad\xde")
+Out[8]: 3735928559
+```
+
+cyclic 模块在缓冲区溢出中用于帮助生成模式字符串（de Bruijn 序列），也可以查找偏移，以确定返回地址。
+
+```
+In [9]: cyclic(20)
+Out[9]: 'aaaabaaacaaadaaaeaaa'
+
+In [10]: cyclic_find(0x61616162)
+Out[10]: 4
+```
 
