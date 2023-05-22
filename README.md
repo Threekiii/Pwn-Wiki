@@ -11,7 +11,13 @@
 3. PWN Tools 分析工具
 4. PWN  You-just-got-pwned!
 
-## 0x02 声明
+## 0x02 WriteUp
+
+**未授权请勿转载 谢谢**
+
+- 2023 年春秋杯网络安全联赛春季赛 [Pytrans](https://github.com/Threekiii/Pwn-Wiki/blob/master/writeup/202305_Pytrans/202305_Pytrans.md) 
+
+## 0x03 声明
 
 本项目相关内容均源于互联网或相关实体书籍，主要来自：
 
