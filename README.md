@@ -4,16 +4,17 @@
 
 一个 Pwn 从 0 到 0.1 的不权威学习指南。持续更新。
 
-## 0x01 建议学习路径
+## 0x01 学习路径
 
 1. Assembly-Language  汇编语言
 2. Reverse-Engineering  逆向工程
 3. PWN Tools 分析工具
 4. PWN  You-just-got-pwned!
+5. Reverse Tools 分析工具
 
 ## 0x02 WriteUp
 
-**未授权请勿转载 谢谢**
+【**未授权请勿转载 谢谢**】
 
 - 2023 年春秋杯网络安全联赛春季赛 [Pytrans](https://github.com/Threekiii/Pwn-Wiki/blob/master/writeup/202305_Pytrans/202305_Pytrans.md) 
 
@@ -23,3 +24,4 @@
 
 - 《从 0 到 1：CTFer 成长之路》
 - 《CTF 竞赛权威指南 Pwn篇》
+- 《CTF 特训营：技术详解、解题方法与竞赛技巧》

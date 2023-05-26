@@ -93,8 +93,6 @@
 
 在链接阶段，可能丢弃函数名、类型名等符号信息。
 
-### 2.1 不同格式的可执行文件
-
 Windows 系统使用 PE（Portable Executable）可执行文件。PE 文件由 DOS 头、 PE 文件头、节表及各节数据组成。如果需要引用外部的动态链接库，则有导入表；如果自己可以提供函数给其他程序来动态链接（常见于 DLL 文件），则有导出表。
 
 Linux 系统使用 ELF（Executable and Linkable Format）可执行文件。 ELF 文件由 ELF 头、各节数据、节表、字符串段、符号表组成。
@@ -103,11 +101,11 @@ Linux 系统使用 ELF（Executable and Linkable Format）可执行文件。 ELF
 
 在运行时，可执行文件的各节会被加载到内存的各位置，一个或多个节会被映射到一个段（Segment）中。段的划分是根据这部分内存需要的权限（读、写、执行）来进行的。如果在相应的段内进行了非法操作，如在只能读取和执行的代码段进行了写操作，则会产生段错误（Segmentation Fault）。
 
-### 2.2 汇编语言
+### 1.2 汇编语言
 
 汇编语言基础知识详见 Assembly Language | 汇编语言。
 
-### 2.3 反汇编
+### 1.3 反汇编
 
 反汇编是将机器代码翻译回汇编语言的过程。
 
@@ -115,7 +113,7 @@ Linux 系统使用 ELF（Executable and Linkable Format）可执行文件。 ELF
 
 尽管有信息丢失，仍然可以通过一些算法成功还原程序的流程，例如：线性扫描反汇编算法和递归下降反汇编算法。
 
-### 2.4 调用约定
+### 1.4 调用约定
 
 在编译器出现后，人们为编译器创立了一些规定各函数之间参数传递段地约定，称为调用约定。
 
@@ -131,7 +129,7 @@ x86 64 位架构的调用约定：
 - Microsoft x64位（x86-64）调用约定：在 Windows 上使用，依次（从左至右）将前 4 个参数放入 RCX、RDX、R8、R9 这 4 个寄存器，然后将剩下的参数从右至左压入栈中。
 - System V x64 调用约定：在 Linux、MacOS 上使用，比 Microsoft 的版本多了两个寄存器，使用 RDI、RSI、RDX、RCX、R8、R9 这 6 个寄存器传递前 6 个参数，剩下的从右至左压栈。
 
-### 2.5 局部变量
+### 1.5 局部变量
 
 每个函数在被调用的时候都会产生局部变量的区域、存储返回地址的区域和参数的区域。这些区域被称为帧，而这些帧都在栈上，又被称为栈帧。但是，栈的内存区域并不一定是固定的，而且随着每次调用段地路径不同，栈帧的位置也会不同。
 
@@ -146,7 +144,27 @@ mov ebp，esp
 
 现在每个函数的栈帧便由局部变量、父栈帧的值、返回地址、参数四部分构成。
 
-### 2.6 常用工具
+### 1.6 主要方法
+
+逆向分析主要是将二进制机器码进行反汇编得到汇编代码，在汇编代码的基础上进行功能分析。
+
+逆向分析的主要方法包括静态分析法和动态分析法。
+
+#### 1.6.1 静态分析法
+
+静态分析法是在不执行代码文件的情形下，对代码进行静态分析的一种方法。静态分析时并不执行代码，而是观察代码文件的外部特性，主要包括文件类型分析和静态反汇编、反编译。
+
+文件类型分析主要用于了解程序是用什么语言编写的或者是用色很么编译器编译的，以及程序是否被加密处理过。
+
+在逆向工程中，主要是使用反汇编工具查看内部代码，分析代码结构。
+
+#### 1.6.2 动态分析法
+
+动态分析法是在程序文件的执行过程中对代码进行动态分析的一种方法，其通过调试来分析代码，获取内存的状态等。
+
+在逆向过程中，通常使用调试器来分析程序的内部结构和实现原理。
+
+### 1.7 常用工具
 
 - IDA Pro
 - OllyDbg（64位环境下不能使用）和 x64dbg
@@ -527,9 +545,30 @@ IDA 设置断点进行调试。注意，通过远程调试运行的程序与服�
 
 
 
-## 第 4 章 常见算法识别
+## 第 4 章 CTF 逆向
 
-### 4.1 特征值识别
+在一个可执行程序（尤其是图形化程序）中，汇编代码量比较庞大，因此要快速定位出真正需要分析的关键代码。找关键代码之后，需要对关键代码采用的算法进行分析，理清程序功能。最后针对程序功能，写出对应脚本，解出 flag。
+
+### 4.1 关键代码定位
+
+#### 4.1.1 API 断点法
+
+在获取文本输入时，对于窗口类程序获取文本的方式主要是通过 GetWindowText 和 GetDlgItemText 两个 API 来获取。在输出结果时，程序通常会弹出对话框，调用的 API 通常为 MessageBox。
+
+在这些 API 函数中下断点，在调试器中断之后，通过栈回溯即可定位到关键代码。
+
+#### 4.1.2 字符串检索法
+
+- 在 IDA 中查找字符串：打开 Strings 子窗口，通过 Ctrl + F 快捷键输入想要查找的字符串。
+- 在 OD 中查找字符串：通过 Alt + E 快捷键，可以查看可执行模块，找到主模块。点击右键，选择中文搜索引擎，根据需要选择搜索 ASCII 或者 UNICODE。
+
+#### 4.1.3 辅助工具定位法
+
+针对特定语言或者编译器生成的程序，有一些辅助工具可帮助用户快速定位案件处理程序的地址，如针对 MFC 程序的 xspy，针对 Delphi 程序的 Dede。
+
+### 4.2 常见算法识别
+
+#### 4.2.1 特征值识别
 
 很多常见算法，如 AES、DES 等，在运算过程中会使用一些常量，为了提高运算效率，这些常量往往被硬编码在程序中。通过识别这些特征常量，可以对算法进行一个大致的快速判断。
 
@@ -555,7 +594,7 @@ IDA 设置断点进行调试。注意，通过远程调试运行的程序与服�
 
 对这种分析方法的对抗是非常简单的，即故意对这些常量进行修改。因此，特征值识别只能作为一种快速判断的手段，做出判断后，还需要进行算法复现或动态调试，来验证算法的判断是否正确。
 
-### 4.2 特征运算识别
+#### 4.2.2 特征运算识别
 
 当特征值不足以识别出算法时，可以通过分析程序是否使用了某些特征运算，来推测程序是否使用了某些算法。
 
@@ -572,6 +611,324 @@ CTF 逆向工程题目中常见算法的特征运算：
 | DES      | L = R<br />R = F(R,K) ^ L                                    | Feistel 结构                               |
 
 特征运算识别也是一种快速判断的方法，需要经过动态调试或算法复现等手段确认后才能得出结论。
+
+#### 4.2.3 Base64
+
+Base64 主要是将输入中的每 3 个字节（共 24 bit）按每 6 个 bit 分成一组，变成 4 个小于 64 的索引值，然后通过一个索引表得到 4 个可见字符。
+
+索引表为一个 64 字节的字符串，如果在代码中发现引用了以下索引表，则基本可以确定使用了 Base64：
+
+```
+ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/
+```
+
+![image-20230524095832689](images/image-20230524095832689.png)
+
+此外，还有一些变种 Base64，主要是改变了这个索引表。
+
+#### 4.2.4 TEA
+
+TEA 算法是一种常见的分组加密算法，密钥为 128 bit，明文为 64 bit，主要做了 32 轮变换，每轮变换中都涉及移位和变换。
+
+TEA 的加密过程：抽取 key 密钥中的前四位，分别加密数组中的前四个字节与后 4 个字节,4个字节为一组每次加密两组。总共加密 32 轮，最后再把加密的结果重新写入到数组中。
+
+TEA 的源码如下：
+
+```c
+void encrypt(uint32_t* v,uint32_t* key){
+    uint32_t v0=v[0],v1=v[1],sum=0,i;
+    uint32_t delta=0x9e3779b9;
+    uint32_t k0=key[0],k1=key[1],k2=key[2],k3=key[3];
+    for(i=0;i<32;i++){
+        sum+=delta;
+        v0+=((v1<<4)+k0)^(v1+sum)^((v1>>5)+k1);
+        v1+=((v0<<4)+k2)^(v0+sum)^((v0>>5)+k3);
+    }
+    v[0]=v0;
+    v[1]=v1;
+}
+```
+
+```c
+void decrypt(uint32_t* v,uint32_t* key){
+    uint32_t v0=v[0],v1=v[1],sum=0xC6EF3720,i;
+    uint32_t delta=0x9e3779b9;
+    uint32_t k0=key[0],k1=key[1],k2=key[2],k3=key[3];
+    for(i=0;i<32;i++){
+        v1-=((v0<<4)+k2)^(v0+sum)^((v0>>5)+k3);
+        v0-=((v1<<4)+k0)^(v1+sum)^((v1>>5)+k1);
+        sum-=delta;
+    }
+    v[0]=v0;
+    v[1]=v1;
+}
+```
+
+TEA 算法有如下特征：
+
+- key 为 128 bit
+- 输入参数为两个 32 bit 无符号整数
+- 三个累加量，其中最后赋值给传入的参数
+- 存在 `<<4 , >>5 , xor` 等操作
+- 特征量：固定常数 0x9e3779b9 或 0x61c88647
+
+xTEA 与 xxTEA 为 TEA 算法的特殊变种，二者都是在原始 TEA 算法上做的局部改动，特征上与 TEA 算法没有本质不同。主要区别如下：
+
+- TEA 的主加密部分为 `<<4,>>5,xor`，循环 32 轮。
+2. xTEA 的主加密部分为 `<<4,>>5,>>11,xor`，循环次数不定，通常为 32 轮，需要传入 3 个参数。
+3. xxTEA 的主加密部分为 `>>5,<<2,>>3,<<4,xor`，循环次数为 `6+52/n`。
+
+#### 4.2.5 xTEA
+
+TEA 算法发布不久，被发现存在缺陷，作为回应，设计者提出了一个 TEA 的升级版本 XTEA。XTEA 跟 TEA 使用了相同的简单运算，但它采用了截然不同的顺序，为了阻止密钥表攻击，四个子密钥（在加密过程中，原 128 位的密钥被拆分为 4 个 32 位的子密钥）采用了一种不太正规的方式进行混合。
+
+总的来说，xTEA 就是在 TEA 算法基础上加了一些内容，而加解密过程基本没变。
+
+```c
+void encipher(unsigned int num_rounds, uint32_t v[2], uint32_t const key[4])
+{
+    unsigned int i;
+    uint32_t v0=v[0],v1=v[1],delta=0x9E3779B9,sum=delta*num_rounds;
+    for(i=0;i<num_rounds;i++){
+        v0+=(((v1<<4)^(v1>>5))+v1)^(sum+key[sum&3]);
+        sum += delta;
+        v1 += (((v0 << 4) ^ (v0 >> 5)) + v0) ^ (sum + key[(sum>>11) & 3]);
+    }
+    v[0]=v0;
+    v[1]=v1;
+}
+```
+
+```c
+void decipher(unsigned int num_rounds, uint32_t v[2], uint32_t const key[4])
+{
+    unsigned int i;
+    uint32_t v0=v[0],v1=v[1],delta=0x9E3779B9,sum=delta*num_rounds;
+    for(i=0;i<num_rounds;i++){
+        v1 -= (((v0 << 4) ^ (v0 >> 5)) + v0) ^ (sum + key[(sum>>11) & 3]);
+        sum -= delta;
+        v0-=(((v1<<4)^(v1>>5))+v1)^(sum+key[sum&3]);
+    }
+    v[0]=v0;
+    v[1]=v1;
+}
+```
+
+#### 4.2.6 xxTEA
+
+相比 TEA，xTEA 算法，xxTEA 算法的优势是原字符串长度可以不是 4 的倍数。
+
+```c
+#include <stdio.h>
+#include <stdint.h>
+#define DELTA 0x9e3779b9
+#define MX (((z>>5^y<<2)+(y>>3^z<<4))^((sum^y)+(key[(p&3)^e]^z)))
+void btea(uint32_t *v,int n,uint32_t const key[4])//n为v数组长度 
+{
+    uint32_t y,z,sum;
+    unsigned p,rounds,e;
+    if(n>1)
+    {
+        rounds=6+52/n;
+        sum=0;
+        z=v[n-1];
+        do
+        {
+            sum+=DELTA;//循环加密过程
+            e=(sum>>2)&3;
+            for(p=0;p<n-1;p++)
+            {
+                y=v[p+1];
+                v[p]+=MX;
+                z=v[p];
+            }
+            y=v[0];
+            z=v[n-1]+=MX;
+        }
+        while(--rounds); 
+    }
+}   
+```
+
+```c
+#include <stdio.h>
+#include <stdint.h>
+#define DELTA 0x9e3779b9
+#define MX (((z>>5^y<<2)+(y>>3^z<<4))^((sum^y)+(key[(p&3)^e]^z)))
+void dtea(uint32_t *v,int n,uint32_t const key[4])//n为v数组长度 
+{
+ rounds = 6 + 52/n;
+ sum = rounds*DELTA;
+    y = v[0];
+    do {
+        e = (sum >> 2) & 3;
+        for (p=n-1; p>0; p--) {
+          z = v[p-1];
+          y = v[p] -= MX;
+        }
+        z = v[n-1];
+        y = v[0] -= MX;
+        sum -= DELTA;
+      } while (--rounds);
+}
+```
+
+#### 4.2.7 AES
+
+AES 加密过程涉及 4 种操作：字节替代（SubBytes）、行移位（ShiftRows）、列混淆（MixColumns）和轮密钥加（AddRoundKey）。
+
+其中，字节替代过程是通过 S 盒完成一个字节到另外一个字节的映射。S 盒和逆 S 盒具体如下：
+
+```c
+static const uint32 FSb[256] =
+{
+    0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5,
+    0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
+    0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0,
+    0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
+    0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC,
+    0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15,
+    0x04, 0xC7, 0x23, 0xC3, 0x18, 0x96, 0x05, 0x9A,
+    0x07, 0x12, 0x80, 0xE2, 0xEB, 0x27, 0xB2, 0x75,
+    0x09, 0x83, 0x2C, 0x1A, 0x1B, 0x6E, 0x5A, 0xA0,
+    0x52, 0x3B, 0xD6, 0xB3, 0x29, 0xE3, 0x2F, 0x84,
+    0x53, 0xD1, 0x00, 0xED, 0x20, 0xFC, 0xB1, 0x5B,
+    0x6A, 0xCB, 0xBE, 0x39, 0x4A, 0x4C, 0x58, 0xCF,
+    0xD0, 0xEF, 0xAA, 0xFB, 0x43, 0x4D, 0x33, 0x85,
+    0x45, 0xF9, 0x02, 0x7F, 0x50, 0x3C, 0x9F, 0xA8,
+    0x51, 0xA3, 0x40, 0x8F, 0x92, 0x9D, 0x38, 0xF5,
+    0xBC, 0xB6, 0xDA, 0x21, 0x10, 0xFF, 0xF3, 0xD2,
+    0xCD, 0x0C, 0x13, 0xEC, 0x5F, 0x97, 0x44, 0x17,
+    0xC4, 0xA7, 0x7E, 0x3D, 0x64, 0x5D, 0x19, 0x73,
+    0x60, 0x81, 0x4F, 0xDC, 0x22, 0x2A, 0x90, 0x88,
+    0x46, 0xEE, 0xB8, 0x14, 0xDE, 0x5E, 0x0B, 0xDB,
+    0xE0, 0x32, 0x3A, 0x0A, 0x49, 0x06, 0x24, 0x5C,
+    0xC2, 0xD3, 0xAC, 0x62, 0x91, 0x95, 0xE4, 0x79,
+    0xE7, 0xC8, 0x37, 0x6D, 0x8D, 0xD5, 0x4E, 0xA9,
+    0x6C, 0x56, 0xF4, 0xEA, 0x65, 0x7A, 0xAE, 0x08,
+    0xBA, 0x78, 0x25, 0x2E, 0x1C, 0xA6, 0xB4, 0xC6,
+    0xE8, 0xDD, 0x74, 0x1F, 0x4B, 0xBD, 0x8B, 0x8A,
+    0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E,
+    0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 0x9E,
+    0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94,
+    0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF,
+    0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68,
+    0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
+};
+```
+
+```c
+static const uint32 RSb[256] =
+{
+    0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38,
+    0xBF, 0x40, 0xA3, 0x9E, 0x81, 0xF3, 0xD7, 0xFB,
+    0x7C, 0xE3, 0x39, 0x82, 0x9B, 0x2F, 0xFF, 0x87,
+    0x34, 0x8E, 0x43, 0x44, 0xC4, 0xDE, 0xE9, 0xCB,
+    0x54, 0x7B, 0x94, 0x32, 0xA6, 0xC2, 0x23, 0x3D,
+    0xEE, 0x4C, 0x95, 0x0B, 0x42, 0xFA, 0xC3, 0x4E,
+    0x08, 0x2E, 0xA1, 0x66, 0x28, 0xD9, 0x24, 0xB2,
+    0x76, 0x5B, 0xA2, 0x49, 0x6D, 0x8B, 0xD1, 0x25,
+    0x72, 0xF8, 0xF6, 0x64, 0x86, 0x68, 0x98, 0x16,
+    0xD4, 0xA4, 0x5C, 0xCC, 0x5D, 0x65, 0xB6, 0x92,
+    0x6C, 0x70, 0x48, 0x50, 0xFD, 0xED, 0xB9, 0xDA,
+    0x5E, 0x15, 0x46, 0x57, 0xA7, 0x8D, 0x9D, 0x84,
+    0x90, 0xD8, 0xAB, 0x00, 0x8C, 0xBC, 0xD3, 0x0A,
+    0xF7, 0xE4, 0x58, 0x05, 0xB8, 0xB3, 0x45, 0x06,
+    0xD0, 0x2C, 0x1E, 0x8F, 0xCA, 0x3F, 0x0F, 0x02,
+    0xC1, 0xAF, 0xBD, 0x03, 0x01, 0x13, 0x8A, 0x6B,
+    0x3A, 0x91, 0x11, 0x41, 0x4F, 0x67, 0xDC, 0xEA,
+    0x97, 0xF2, 0xCF, 0xCE, 0xF0, 0xB4, 0xE6, 0x73,
+    0x96, 0xAC, 0x74, 0x22, 0xE7, 0xAD, 0x35, 0x85,
+    0xE2, 0xF9, 0x37, 0xE8, 0x1C, 0x75, 0xDF, 0x6E,
+    0x47, 0xF1, 0x1A, 0x71, 0x1D, 0x29, 0xC5, 0x89,
+    0x6F, 0xB7, 0x62, 0x0E, 0xAA, 0x18, 0xBE, 0x1B,
+    0xFC, 0x56, 0x3E, 0x4B, 0xC6, 0xD2, 0x79, 0x20,
+    0x9A, 0xDB, 0xC0, 0xFE, 0x78, 0xCD, 0x5A, 0xF4,
+    0x1F, 0xDD, 0xA8, 0x33, 0x88, 0x07, 0xC7, 0x31,
+    0xB1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xEC, 0x5F,
+    0x60, 0x51, 0x7F, 0xA9, 0x19, 0xB5, 0x4A, 0x0D,
+    0x2D, 0xE5, 0x7A, 0x9F, 0x93, 0xC9, 0x9C, 0xEF,
+    0xA0, 0xE0, 0x3B, 0x4D, 0xAE, 0x2A, 0xF5, 0xB0c,
+    0xC8, 0xEB, 0xBB, 0x3C, 0x83, 0x53, 0x99, 0x61,
+    0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26,
+    0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7D
+};
+```
+
+如果发现程序中有 S 盒或者动态生成了 S 盒，则可以确定采用了 AES 加密。
+
+#### 4.2.8 RC4
+
+RC4 加密算法属于流加密算法，包括初始化函数和加解密函数，函数代码具体如下：
+
+```c
+/* Initialization function */ 
+void rc4_init(unsigned char *s,unsigned char *key, unsigned long Len)
+{
+    int i = 0 ,j = 0 ;
+     char k[ 256 ]={ 0 };
+    unsigned char tmp = 0 ;
+     for (i = 0 ;i< 256 ;i++ ) {
+        s[i] = i;
+        k[i] =key[i% Len];
+    }
+    for (i= 0 ;i< 256 ;i++ ) {
+        j =(j+s[i]+k[i])% 256 ;
+        tmp = s[i];
+        s[i] = s[j]; // Exchange s[i] and s[j] 
+        s[j]= tmp;
+    }
+}
+```
+
+```c
+/* Encryption and decryption */ 
+void rc4_crypt(unsigned char *s,unsigned char *Data,unsigned long Len)
+{
+    int i = 0 , j = 0 , t = 0 ;
+    unsigned long k = 0 ;
+    unsigned char tmp;
+     for (k = 0 ;k<Len;k++ )
+    {
+        i = (i + 1 )% 256 ;
+        j =(j+s[i])% 256 ;
+        tmp = s[i];
+        s[i] = s[j]; // Swap s[x] and s[y] 
+        s[j]= tmp;
+        t =(s[i]+s[j])% 256 ;
+        Data[k] ^= s[t];
+    }
+}
+```
+
+可以看出，初始化代码对字符数组 s 进行了初始化赋值，且赋值分别递增，之后又对 s 进行了 256 次交换操作。
+
+#### 4.2.9 MD5
+
+MD5 消息摘要算法，是一种被广泛使用的密码散列函数，可以产生一个 128 位（16 字节）的散列值，用于确保信息传输的完整性和一致性。
+
+MD5 加密的函数大致如下：
+
+```c
+MD5_CTX md5c;
+MD5Init(&md5c);
+MD5UpdaterString(&md5c,plain);
+MD5Final(digest,&md5c);
+```
+
+其中，MD5Init 会初始化四个称作 MD5 链接变量的整数参数，分别是 0x67452301、0xEFCDAB89、0x98BADCFE、0x10325476，如果程序中有这 4 个常数，则很可能为 MD5 算法。
+
+```C
+void MD5Init(MD5_CTX *context)
+{
+    context->count[0] = 0;
+    context->count[1] = 0;
+    context->state[0] = 0x67452301;
+    context->state[1] = 0xEFCDAB89;
+    context->state[2] = 0x98BADCFE;
+    context->state[3] = 0x10325476;
+}
+```
 
 ### 4.3 第三方库识别
 
@@ -606,6 +963,45 @@ CTF 逆向工程题目中常见算法的特征运算：
 
 - BinDiff：https://www.zynamics.com/software.html
 
+### 4.4 求解 Flag
+
+#### 4.4.1 直接内存获取
+
+简单题目可以通过下断点，查看内存的方式获取 flag。
+
+#### 4.4.2 算法逆变换
+
+示例：变种的 base64 逆变换
+
+```python
+#whitehat-grand-prix-qualification-2015
+import base64
+s1 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+s2 = 'ELF8n0BKxOCbj/WU9mwle4cG6hytqD+P3kZ7AzYsag2NufopRSIVQHMXJri51Tdv'
+dict = {}
+for i in range(len(s1)):
+    dict[s2[i]] = s1[i]
+dict['='] = '='
+
+output = 'ms4otszPhcr7tMmzGMkHyFn='
+s3 = ''
+for i in range(len(output)):
+    s3 += dict[output[i]]
+flag = base64.b64decode(s3)
+print flag
+#Funny_encode_huh!
+```
+
+#### 4.4.3 线性变换求解
+
+如果 convert 是一个线性变换，那么在 output=convert(input) 中，output 的第 i 位只能由 input 的第 i 位决定。通过获取 input[i] 的所有可能输入对应的输出 output[i]，即可求出 input[i]。
+
+对于这种变换，可以进行单字符爆破。
+
+#### 4.4.4 约束求解
+
+如果 output=convert(input) 之后，需要 output 满足多个约束条件，则可以使用约束求解器 z3 进行求解。
+
 ## 第 5 章 二进制代码保护和混淆
 
 二进制代码的保护手段种类繁多：
@@ -620,11 +1016,7 @@ CTF 逆向工程题目中常见算法的特征运算：
 
 #### 5.1.1 花指令
 
-干扰反汇编器最简单的方法就是在代码中增加花指令。
-
-花指令，是指在程序中完全冗余，不影响程序功能却会对逆向工程产生干扰的指令。
-
-花指令没有固定的形式，泛指用于干扰逆向工作的无用指令。
+干扰反汇编器最简单的方法就是在代码中增加花指令。花指令是指在程序中完全冗余，不影响程序功能却会对逆向工程产生干扰的指令。花指令没有固定的形式，泛指用于干扰逆向工作的无用指令。
 
 以下汇编代码为常见的函数头：
 
@@ -801,15 +1193,62 @@ IDA 优化相关工具（Go）：
 - https://github.com/strazzere/golang_loader_assist
 - https://github.com/sibears/IDAGolangHelper
 
-### 6.2 C# 和 Python
+### 6.2 Python
+
+Python 程序是 Python 源代码（.py 文件）经过编译生成的对应的字节码文件（.pyc 文件），再通过 Python 打包工具，转化为 EXE 或者 ELF 格式的可执行程序。最常见的打包工具分别是：
+
+- py2exe：https://www.py2exe.org/
+- pyInstaller：https://pyinstaller.org/
+
+Python 的逆向是对 .pyc 文件的逆向分析。对于没有混淆过的 .pyc 文件，可以使用 Python 的 uncompyle2 将其还原为 .py  文件；对于混淆过的 .pyc 文件，若无法去混淆，则只能分析其虚拟机指令。
+
+#### 6.2.1 Python 程序识别
+
+通过 IDA 打开要分析的程序，查看程序中的字符串，如果看到有 PY2EXE_VERBOSE 和 较多以 Py 开头的字符串，则是用 py2exe 进行打包的：
+
+![image-20230524142807438](images/image-20230524142807438.png)
+
+使用 pyInstaller 打包的程序中也存在较多以 Py 开头的字符串：
+
+![image-20230524142658996](images/image-20230524142658996.png)
+
+#### 6.2.2 字节码文件获取
+
+py2exe 打包的程序可以使用以下工具提取 .pyc 文件：
+
+- unpy2exe：https://github.com/matiasb/unpy2exe
+
+```
+> python unpy2exe.py example.exe
+```
+
+pyInstaller 打包的程序可以使用以下工具提取 .pyc 文件：
+
+- pyinstxtractor：https://github.com/extremecoders-re/pyinstxtractor
+
+```
+> python pyinstxtractor.py example.exe
+```
+
+生成的字节码文件（.pyc 文件）的前 8 字节通常为 03 f3 0d 0a 76 ed db 57，但有时 pyinstxtractor.py 提取出来的字节码文件缺少最开始的 8 字节，此时需要手动在文件开始处增加缺失的 8 字节。
+
+#### 6.2.3 字节码文件反编译
+
+得到 Python 字节码文件（.pyc 文件）后，还需要通过反编译得到 Python 源代码（.py 文件），可以使用以下工具：
+
+- uncompyle6：https://github.com/rocky/python-uncompyle6
+
+```
+>  uncompyle6 -o example.py example.pyc
+```
+
+### 6.3 C# 
 
 C#、Python 是基于虚拟机的高级语言，其可执行程序或文件中包含的字节码，并不是传统汇编指令的机器码，而是其本身虚拟机指令的字节码，所以这类程序不宜使用 IDA 分析。
 
 C# 的逆向分析工具有：.NET Reflector、ILSpy/dnSpy、Telerik JustDecompile、JetBrains dotPeek 等，分析 C# 程序，只需用这些工具打开即可得到源码。对于有壳的程序，需要去壳后分析，去壳工具可以用 de4dot。
 
-Python 的逆向是对 PYC 文件的逆向分析。对于没有混淆过的 PYC 文件，可以使用 Python 的 uncompyle2 将其还原为 PY 文件；对于混淆过的 PYC 文件，若无法去混淆，则只能分析其虚拟机指令。
-
-### 6.3 C++ MFC
+### 6.4 C++ MFC
 
 MFC 是微软开发的一套 C++ 类库，用来支撑 Windows 下部分 GUI 程序的运行。MFC 包装了 Windows GUI 的消息循环、消息处理流程，将消息用 C++ 的类封装，然后分发到绑定的对象上，方便开发人员快速编写程序。MFC 的多层封装，导致大量的消息处理函数没有直接的代码引用，而是被间接调用。
 
@@ -818,11 +1257,19 @@ MFC 是微软开发的一套 C++ 类库，用来支撑 Windows 下部分 GUI 程
 - 利用 CWnd 的类和实例方法，动态获取目标窗口的 MessageMap 信息（工具：xspy）。
 - 在 IDA 中利用引用关系寻找，在 IDA 中寻找 CDialog 字符串，然后寻找交叉引用，在其周围找到 AFX_MSGMAP。
 
+### 6.5 .NET 
+
+.NET 是微软设计的独立于操作系统之上的平台，可以将其看成一套虚拟机，无论机器运行的是什么操作系统，只要该系统安装了 .NET 框架，便可以运行 .NET 可执行程序。
+
+工具：
+
+- .NET Reflector
+
 ## 第 7 章 现代逆向工程技巧
 
 ### 7.1 符号执行
 
-符号执行（Symbolic Execution）是一种程序分析技术，可以通过分析程序来得到让特定代码区域执行的输入。使用符号执行分析一个程序时，该程序会使用符号值作为输入，而非一般执行程序时使用的具体值。在达到目标代码时，分析器可以得到相应的路径约束，然后通过约束求解器来得到可以出发目标代码的具体值。
+符号执行（Symbolic Execution）是一种程序分析技术，可以通过分析程序来得到让特定代码区域执行的输入。使用符号执行分析一个程序时，该程序会使用符号值作为输入，而非一般执行程序时使用的具体值。在达到目标代码时，分析器可以得到相应的路径约束，然后通过约束求解器来得到可以触发目标代码的具体值。
 
 在实际环境下，符号执行被广泛应用到自动化漏洞挖掘测试过程中。
 
@@ -832,18 +1279,65 @@ MFC 是微软开发的一套 C++ 类库，用来支撑 Windows 下部分 GUI 程
 
 | 工具      | 适用范围                                            |
 | --------- | --------------------------------------------------- |
-| angr      | x86，x86-64，ARM，AARCH64，MIPS，MIPS64，PPC，PPC64 |
+| Angr      | x86，x86-64，ARM，AARCH64，MIPS，MIPS64，PPC，PPC64 |
 | S2E       | x86，x86-64，ARM 架构下用户态与内核态程序           |
 | BE-PUM    | x86                                                 |
 | Manticore | x86，x86-64，ARMv7，EVM                             |
 
-最新版的 angr 主要分为 5 个模块：
+最新版的 Angr 主要分为 5 个模块：
 
 - 主分析器 angr
 - 约束求解器 claripy
 - 二进制文件加载器 cle
 - 汇编翻译器 pyvex（用于将二进制代码翻译为统一的中间语言）
 - 架构信息库 archinfo（存放很多架构相关的信息，用于针对性地处理不同的架构）
+
+#### 7.1.1 Angr
+
+Angr 是一个强大的二进制分析工具，在逆向中，一般使用 Angr 的动态符号执行解出 flag。
+
+- 官方文档：https://docs.angr.io/
+- 官方实例：https://docs.angr.io/en/latest/examples.html
+
+一个常见的 Angr 脚本包括以下步骤：
+
+1）使用 angr.Project 加载要分析的二进制程序，通常会将选项 auto_load_libs 设置为 false，使 angr 不加载动态链接库：
+
+```
+p = angr.Project('./vul', load_options={"auto_load_libs":False})
+```
+
+2）建立程序的一个初始化状态。
+
+使用 factory.entry_state 直接在程序入口点建立一个初始化状态。如果此时程序需要传递符号化的输入，那么还需要在建立初始化状态时，进行符号化：
+
+```
+argv1 = claripy.BVS("argv1", 100*8)
+initial_state = p.factory.entry_state(args["./program", argv1])
+```
+
+也可以使用 factory.blank_state 在程序的任意指定地址建立一个状态。此时，可以通过 memory.store 对状态中的部分内存进行符号化：
+
+```
+s = p.factory.blank_state(addr=0x401084)
+s.memory.store(0x402159, s.solver.BVS("ans", 8*40))
+```
+
+3）从初始化状态开始进行动态符号执行，使用 explore 进行路径的探索，通过 find 参数指定需要到达的地址，avoid 参数则用于指定不要到达的地址：
+
+```
+sm = proj.factory.simulation_manager(initial_state)
+sm.explore(find=0x400830, avoid=0x400850)
+```
+
+4）找到之后，通过约束求解器得到 flag：
+
+```
+found = sm.found[0]
+flag = found.solver.eval(arg1, cast_to=bytes)
+```
+
+
 
 ### 7.2 二进制插桩
 

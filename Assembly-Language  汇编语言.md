@@ -511,7 +511,7 @@ mov ax,cs:[bx]
 - 通用寄存器 EAX、EBX、ECX、EDX、ESI、EDI。
 - 栈顶指针寄存器 ESP、栈底指针寄存器 EBP。
 - 指令计数器 EIP（保存下一条即将执行的指令的地址）。
-- 段寄存器 CS、DS、SS、ES、FS、GS。
+- 段寄存器 CS、DS、SS、ES、FS、GS。在当前的操作系统中，CS、DS、SS、ES 的段寄存器的基地址通常为 0。
 
 ### 5.2 x64 架构
 
