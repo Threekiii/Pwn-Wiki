@@ -1176,3 +1176,80 @@ In [10]: cyclic_find(0x61616162)
 Out[10]: 4
 ```
 
+## 第 4 章 Checksec
+
+### 4.1 安装及使用
+
+手动安装：
+
+```
+git clone https://github.com/slimm609/checksec.sh.git
+cd checksec.sh
+sudo ln –sf checksec /usr/bin/checksec
+```
+
+使用方法：
+
+```
+checksec filename
+```
+
+![image-20230531084016777](images/image-20230531084016777.png)
+
+### 4.2 可执行文件属性
+
+#### 4.2.1 Arch
+
+程序架构信息。
+
+#### 4.2.2 RELRO
+
+RELRO（Relocation Read-Only）技术主要是针对 GOT 改写的攻击方式，分为两种，Partial RELRO 和 Full RELRO。
+
+- Partial RELRO：在程序装入后，将其中一段（如 .dynamic）标记为只读，防止程序的一些重定位信息被修改
+- Full RELRO：在 Partial RELRO 的基础上，在程序装入时，直接解析完所有符号并填入对应的值，此时所有的 GOT 表项都已初始化，且不装入 link_map 与_dl_runtime_resolve 的地址 (二者都是程序动态装载的重要结构和函数)。
+
+设置符号重定向表格为只读或在程序启动时就解析并绑定所有动态符号，从而减少对 GOT（Global Offset Table）攻击。RELRO 为” Partial RELRO”, 说明对 GOT 表具有写权限。
+
+```
+gcc -o hello test.c // 默认情况下，Partial RELRO
+gcc -z norelro -o hello test.c // 关闭，即No RELRO
+gcc -z lazy -o hello test.c // 部分开启，即Partial RELRO
+gcc -z now -o hello test.c // 全部开启，即Full RELRO
+```
+
+#### 4.2.3 Stack Canary
+
+Stack Canary 保护是专门针对栈溢出攻击设计的一种保护机制。由于栈溢出攻击的主要目标是通过溢出覆盖函数栈高位的返回地址，因此其思路是在函数开始执行前，即在返回地址前写入一个字长的随机数据，在函数返回前校验该值是否被改变，如果被改变，则认为是发生了栈溢出，程序将终止运行。
+
+```
+gcc -fno-stack-protector -o hello test.c   //禁用栈保护
+gcc -fstack-protector -o hello test.c    //启用堆栈保护，不过只为局部变量中含有 char 数组的函数插入保护代码
+gcc -fstack-protector-all -o hello test.c  //启用堆栈保护，为所有函数插入保护代码
+```
+
+#### 4.2.4 NX
+
+NX 保护在 Windows 中也被称为 DEP，通过现代操作系统的内存保护单元（Memory Protect Unit，MPU）机制对程序内存按页的粒度进行权限设置，其基本规则为可写权限与可执行权限互斥。在开启 NX 保护的程序中不能直接使用 shellcode 执行任意代码。所有可以被修改写入 shellcode 的内存都不可执行，所有可以被执行的代码数据都是不可被修改的。
+
+NX enabled 表示栈中数据没有执行权限，当攻击者在堆栈上部署 shellcode 并触发时，会直接造成程序崩溃，但可以利用 rop 绕过。
+
+```
+gcc -o  hello test.c // 默认情况下，开启NX保护
+gcc -z execstack -o  hello test.c // 禁用NX保护
+gcc -z noexecstack -o  hello test.c // 开启NX保护
+```
+
+#### 4.2.5 PIE
+
+与 ASLR 技术类似，PIE（Position-Independent Executable）保护的目的是让可执行程序 ELF 的地址进行随机化加载，从而使程序的内存结构对攻击者完全未知，进一步提高程序的安全性。
+
+在 PIE 和 ASLR 同时开启的情况下, 攻击者将对程序的内存布局一无所知, 传统的改写 GOT 表项的方法也难以进行, 因为攻击者不能获得程序 .got 段的虚地址。
+
+PIE enabled 表示需在攻击时泄露地址信息。
+
+```
+gcc -fpie -pie -o hello test.c  // 开启PIE，此时强度为1
+gcc -fPIE -pie -o hello test.c  // 开启PIE，此时为最高强度2（还与运行时系统ALSR设置有关）
+```
+
